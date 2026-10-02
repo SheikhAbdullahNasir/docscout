@@ -1,0 +1,17 @@
+{
+  "name": "@docscout/server",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "typecheck": "tsc --noEmit",
+    "build": "tsc",
+    "start": "node dist/apps/server/src/index.js"
+  },
+  "dependencies": {
+    "@docscout/shared": "*",
+    "dotenv": "^18.0.5",
+    "express": "^5.2.1"
+  }
+}

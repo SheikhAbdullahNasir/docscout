@@ -1,0 +1,21 @@
+:root { font-family: system-ui, sans-serif; color: #202b28; background: #f7f8f5; line-height: 1.6; }
+* { box-sizing: border-box; }
+body { margin: 0; }
+main { max-width: 850px; margin: 0 auto; padding: 72px 24px; }
+.eyebrow { color: #476253; font-size: 12px; font-weight: 700; letter-spacing: .12em; }
+h1 { max-width: 680px; font-size: clamp(32px, 5vw, 52px); line-height: 1.12; letter-spacing: -.04em; }
+.intro { max-width: 650px; color: #4f5e56; font-size: 18px; }
+form { margin: 40px 0; }
+label { font-weight: 650; }
+#url-help { font-size: 14px; color: #4f5e56; margin: 6px 0 12px; }
+.form-row { display: flex; gap: 12px; }
+input, button { font: inherit; border-radius: 6px; padding: 12px 14px; }
+input { flex: 1; min-width: 0; border: 1px solid #89978e; background: white; }
+button { border: 1px solid #214e3a; background: #214e3a; color: white; cursor: pointer; font-weight: 600; }
+button:hover { background: #163a2a; }
+:focus-visible { outline: 3px solid #ae6500; outline-offset: 3px; }
+.error { color: #a12721; }
+aside { border-top: 1px solid #cbd2c9; padding-top: 20px; color: #4f5e56; }
+h2 { color: #202b28; font-size: 18px; }
+p { overflow-wrap: anywhere; }
+@media (max-width: 600px) { main { padding: 36px 20px; } .form-row { flex-direction: column; } }
