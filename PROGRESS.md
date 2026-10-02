@@ -40,13 +40,13 @@ Run on October 2, 2026 after `npm ci`:
 | `npm run test:e2e` | Passed: 3 Chromium tests for health proxy, keyboard form/validation, local-only requests, 360/1280 widths |
 | Ignore rules and source credential-pattern review | Passed; no credential-pattern matches in reviewed application/configuration files |
 
-Browser installation initially hit download timeouts; retry completed successfully before reporting the browser gate passed. Playwright emitted environment color warnings; they did not fail tests. Git commands used a folder-scoped safe.directory option because the Windows sandbox account differs from the folder owner. No global trust changes were made. GitHub CLI is absent, but Git Credential Manager is installed; push authentication will be verified by the actual push.
+Browser installation initially hit download timeouts; retry completed successfully before reporting the browser gate passed. Playwright emitted environment color warnings; they did not fail tests. Git commands used a folder-scoped safe.directory option because the Windows sandbox account differs from the folder owner. No global trust changes were made. GitHub CLI is absent, but Git Credential Manager authenticated the successful push; no credential setup is blocked.
 
 ## Commit and push record
 
 Staged file list and source diff reviewed; no dependency directories, generated builds, browser artifacts, or real credentials staged. Independent review found no Phase 0 blockers. Fixed a minor environment-location issue so source/compiled layout determines the root `.env` path independently of `NODE_ENV`, then reran affected checks.
 
-Phase 0 commit/push pending. Create `feat: complete DocScout phase 0 setup` and push `main` without force. A blocked push must be reported honestly; never request credentials in chat.
+Phase 0 implementation commit: `45c3258` — `feat: complete DocScout phase 0 setup`. Successfully pushed to `origin/main` on October 2, 2026; local main tracks origin/main. No force push or remote history replacement. A documentation follow-up records this outcome. Future blocked pushes must be reported honestly; never request credentials in chat.
 
 ## Remaining work
 
