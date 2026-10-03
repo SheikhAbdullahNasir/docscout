@@ -1,16 +1,16 @@
 # DocScout progress
 
-Approved source: `PROJECT_SPEC.md` version 1.0. Updated October 3, 2026.
+Approved source: `PROJECT_SPEC.md` version 1.0. Updated October 4, 2026.
 
 ## Phase status
 
 - [x] Phase 0 — local workspace, scripts, blank environment example, basic URL form, health endpoint; acceptance gate passed.
-- [ ] Phase 1 — GitHub foundation and independent server URL validation.
+- [x] Phase 1 — GitHub foundation, bounded snapshot data, and browser acceptance gate.
   - [x] Phase 1A — strict server URL validation and public repository metadata only.
   - [x] Phase 1B — default-branch commit snapshot and bounded recursive tree.
   - [x] Phase 1C — deterministic selected-document paths and bounded pinned content retrieval.
   - [x] Phase 1D — bounded open labeled-issue retrieval with explicit coverage.
-  - [ ] Remaining Phase 1 — browser integration.
+  - [x] Phase 1E — minimal browser integration for repository metadata, pinned documents, labeled issues, and truthful states.
 - [ ] Phase 2 — evidence-backed core analyzers.
 - [ ] Phase 3 — usable results and complete UI states.
 - [ ] Phase 4 — reliable core, security limits, fixtures, and CI.
@@ -176,6 +176,37 @@ The first sandboxed full-suite run again encountered transient Windows sandbox t
 
 Phase 1D implementation commit: `1308abc` (`feat: add Phase 1D labeled issue retrieval`). No push or pull request was requested or attempted. This documentation follow-up records the verified local checkpoint.
 
+## Phase 1E — browser acceptance-gate integration (October 4, 2026)
+
+- Connected the existing Phase 0 form to the existing typed `POST /api/repository/snapshot` flow. No parallel endpoint, state-management framework, backend selection logic, analyzer, cache, queue, authentication, database, or worker was added.
+- Added the minimal Phase 1 repository summary: canonical owner/name and link, default branch, archived notice, snapshot status, and compact pinned commit SHA.
+- Added plain-text README and repository-local CONTRIBUTING previews with the selected backend path and pinned source link. Repository-provided HTML remains literal text; remote images and arbitrary text links are not rendered.
+- Added straightforward labeled-issue source data: number/title/link, exact maintainer labels, update time, assignment state, assignees, and bounded body excerpt. No ranking, difficulty estimate, time estimate, opportunity card, or beginner-friendly claim was added.
+- Added narrow complete-empty messages and distinct partial-empty behavior. Missing guidance is claimed only when selection evidence supports absence; unavailable or skipped selected guidance retains its narrower backend state.
+- Added readable loading, completion, empty-repository, archived, unknown/unavailable document, incomplete path/selection, skipped document, sampled/failed issue stream, malformed-response, network, and safe server-error states. Server error messages are displayed without raw error objects, stack traces, tokens, or request internals.
+- Added deterministic offline Playwright fixtures for successful scans, README, CONTRIBUTING, labeled issues, archived metadata, safe rendering, missing README/guidance, complete empty issue queries, partial coverage with zero returned records, skipped guidance, empty repositories with retained issues, invalid input, unavailable repositories, malformed success responses, and responsive layouts. Existing server/API tests remain unchanged and green.
+
+### Phase 1E verification
+
+| Command/check | Actual result |
+|---|---|
+| Initial focused Phase 1E browser test before implementation | Failed as expected: the old Phase 0 placeholder displayed “Repository scanning arrives in Phase 1” and sent no snapshot request |
+| Truthfulness regressions before fixes | Failed as expected for unavailable/skipped CONTRIBUTING evidence and partial-empty issue coverage; each passed after its targeted fix |
+| `npm run lint` | Passed |
+| `npm run typecheck` | Passed across all three workspaces |
+| `npm test` | Passed: 187 tests across 9 suites; all Phase 0–1D tests retained |
+| `npm run build` | Passed: Vite frontend and TypeScript server builds |
+| `npm run test:production` | Passed: health, frontend HTML, built JS/CSS assets, unknown API 404 |
+| `npm run test:e2e` | Passed: 11 Chromium tests, including 8 Phase 1E result/state tests and the 3 retained setup/responsive checks |
+| Bounded public-repository browser smoke | Passed through the real browser form and API against `octocat/Spoon-Knife` |
+| Diff/secret review | Passed: scoped browser source/tests/docs only; no generated build output or credential material staged |
+
+The public smoke displayed canonical `octocat/Spoon-Knife`, default branch `main`, ready snapshot status, pinned commit `d0dd1f61b33d`, and the returned `README.md` as plain text. That repository returned no repository-local CONTRIBUTING guidance and no matches for the two supported issue-label queries, so the UI displayed the required narrow absence messages. The smoke did not require every optional resource. The in-app browser controller reset before opening the page, so the live smoke used a one-off local Chromium session through the same real form and server; the scan itself completed successfully. Automated tests remained offline.
+
+Independent review found no Critical issues. It identified false-absence edge cases for unavailable/skipped guidance and empty partial issue coverage; those were fixed with red-to-green browser regressions. The review also prompted safe validation of successful response shapes, label-specific coverage notes, a completion announcement, and explicit empty-repository/unknown-document coverage.
+
+Phase 1 acceptance gate: **passed** — “Fixture and public-repo smoke test display README/guidance/issues; absence/errors are readable.” Offline fixtures display available README, guidance, and issues; the public smoke displays the optional resources actually returned; absence, partial coverage, and representative errors are readable. Phase 1E implementation commit: `55a8762` (`feat: complete Phase 1 browser integration`). No push or pull request was requested or attempted.
+
 ## Remaining work
 
-Stop after Phase 1D. The recommended next step is the remaining Phase 1 browser integration for the already-typed repository, pinned documents, and labeled issues. Do not begin Phase 2 analyzers or issue opportunity cards as part of that step. Analyzer rules, ranking, result cards/filters, full reliability budgets, queue/cache/retries, CI, and Phase 6 reports remain deferred. AI stays disabled; no billable AI call, cloning, repository code execution, write to an analyzed repository, or public deployment occurred. Continue to update progress, run relevant checks, and commit/push after each authorized completed slice.
+Stop after the verified Phase 1 gate. The recommended next step is Phase 2A: implement only the missing repository-relative documentation target analyzer from the approved specification, with evidence and truncated-tree safeguards. Do not combine that work with issue ranking, Phase 3 result cards/filters, full reliability infrastructure, AI, or deployment. AI remains disabled; no billable AI call, cloning, repository code execution, write to an analyzed repository, or public deployment occurred.

@@ -1,6 +1,6 @@
 # DocScout
 
-DocScout is a local tool being built to help new contributors find evidence-backed tasks in public GitHub repositories. `PROJECT_SPEC.md` is the approved specification. Phase 0 and GitHub foundation Phases 1A–1D are implemented; Phase 1 as a whole is incomplete.
+DocScout is a local tool being built to help new contributors find evidence-backed tasks in public GitHub repositories. `PROJECT_SPEC.md` is the approved specification. Phase 0 and GitHub foundation Phases 1A–1E are implemented; the Phase 1 acceptance gate is complete.
 
 ## Prerequisites
 
@@ -20,7 +20,7 @@ Open http://127.0.0.1:5173. The server runs at http://127.0.0.1:3001; Vite proxi
 
 No credentials or `.env` file are needed. Optional later server settings are documented in `.env.example`; credentials are blank. If you copy it to root `.env`, keep that file private. Do not put secrets in `VITE_` variables or paste credentials into chat. Development expects server port 3001 because the Vite proxy uses it.
 
-The form accepts a basic GitHub repository URL shape, supports Enter submission, and shows inline errors. Submitting a valid shape displays a Phase 1 notice. It sends no scan request. The server metadata and snapshot endpoints described below are available separately. Browser scan results and analyzers are future steps. AI has no implementation or runtime SDK and remains disabled regardless of environment keys. There is no public deployment.
+The form accepts a basic GitHub repository URL shape, supports Enter submission, shows inline errors, and sends valid input to the existing snapshot endpoint. The browser displays canonical repository and pinned-snapshot metadata, selected README and CONTRIBUTING content, supported labeled issues, and narrow empty/partial/error states. Repository content is rendered as plain text; only server-validated repository, source, and issue URLs become links. Phase 2 analyzers and Phase 3 result cards are not implemented. AI has no implementation or runtime SDK and remains disabled regardless of environment keys. There is no public deployment.
 
 ## Phase 1A metadata endpoint
 
@@ -61,6 +61,14 @@ The snapshot response now includes `issues: { fetchedAt, items, coverage }`. The
 Pull requests returned by GitHub's Issues endpoint are discarded. Issues appearing in both streams are deduplicated by number while preserving their exact label names, title, validated GitHub issue URL, update time, assignee logins, assignment state, and a plain-text body excerpt capped at 500 Unicode characters. The retrieval layer does not rank issues, estimate difficulty, or treat `help wanted` as proof that an issue is beginner-easy.
 
 Each label query reports complete, partial, or failed coverage with pages fetched and cap state. Empty successful queries use the narrow message `No matches were returned for the supported label query.` Nonfatal upstream or malformed data can leave explicit partial coverage when the other label remains trustworthy. Authentication, permission, and cooldown failures remain fatal rather than appearing as empty results. Archived repository state remains in canonical metadata; issue data does not imply active maintenance.
+
+## Phase 1E browser integration
+
+The existing form posts to `POST /api/repository/snapshot` and consumes the shared Phase 1 response contract. Results include canonical owner/repository identity, the repository link, default branch, archived state, snapshot status, compact pinned commit SHA, selected README and repository-local CONTRIBUTING path/content, and straightforward labeled-issue source data.
+
+README and CONTRIBUTING text is displayed in preformatted plain text. Repository-provided HTML is not rendered, remote images are not loaded, and arbitrary repository text is not converted into links. Missing resources, incomplete tree/document selection, skipped documents, sampled or failed label streams, empty repositories, and safe server errors retain narrow evidence-based wording. A complete empty issue result is distinguished from an empty partial result.
+
+Offline Playwright fixtures cover loading and completion, successful results, archived metadata, safe document rendering, labeled issues, complete empty results, partial coverage, unknown/unavailable/skipped documents, an empty repository, invalid input, unavailable repositories, malformed success responses, responsive layout, and absence of scan traffic for rejected input. Automated browser tests do not contact GitHub.
 
 ## Verification
 
