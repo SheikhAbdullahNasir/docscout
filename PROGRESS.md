@@ -104,7 +104,7 @@ Live evidence: branch `master`; commit `7fd1a60b01f91b314f59955a4e4d4e80d8edf11d
 
 Offline tests cover main/non-main/slash/special-character branches, canonical request order, headers and fixed targets, SHA extraction/validation, regular and truncated trees, exact case and modes, empty repositories, unrelated conflict/404 failures, commit/tree auth/permission/cooldown/network/redirect errors, malformed evidence, duplicate paths, streamed size limits, oversized output, private metadata, invalid request admission, and safe error serialization. Initial new tests failed because getSnapshot was missing. Follow-up checks caught a branch error classification mismatch and unnecessary regex escape; fixed both and reran all checks successfully. Existing Playwright color-environment warnings remain harmless.
 
-Independent review found no blockers or important issues. No skipped or blocked verification. This slice is verified and ready for the existing commit/push checkpoint; Phase 1 remains incomplete.
+Independent review found no blockers or important issues. No skipped or blocked verification. Implementation commit `3d4e6d6` (`feat: add Phase 1B pinned snapshot and recursive tree`) was successfully pushed to origin/main on October 3, 2026, preserving history without force. This documentation follow-up records the outcome; Phase 1 remains incomplete.
 
 ## Remaining work
 
