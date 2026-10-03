@@ -9,7 +9,8 @@ Approved source: `PROJECT_SPEC.md` version 1.0. Updated October 3, 2026.
   - [x] Phase 1A — strict server URL validation and public repository metadata only.
   - [x] Phase 1B — default-branch commit snapshot and bounded recursive tree.
   - [x] Phase 1C — deterministic selected-document paths and bounded pinned content retrieval.
-  - [ ] Remaining Phase 1 — labeled issues and browser integration.
+  - [x] Phase 1D — bounded open labeled-issue retrieval with explicit coverage.
+  - [ ] Remaining Phase 1 — browser integration.
 - [ ] Phase 2 — evidence-backed core analyzers.
 - [ ] Phase 3 — usable results and complete UI states.
 - [ ] Phase 4 — reliable core, security limits, fixtures, and CI.
@@ -141,6 +142,40 @@ Independent review initially identified incomplete-tree selection disclosure and
 
 Phase 1C implementation commit: `0c37f2d` (`feat: add Phase 1C pinned document retrieval`). The commit was created locally on `main`. A non-force push to the existing `origin/main` was attempted only after verification, but the execution approval gate rejected direct default-branch mutation because this request did not explicitly authorize that remote action. No workaround or alternate push was attempted. This documentation follow-up records the verified local checkpoint and the blocked push accurately.
 
+## Phase 1D — bounded labeled issues (October 3, 2026)
+
+- Extended the existing repository snapshot response with one shared typed `issues` result containing `fetchedAt`, deduplicated issue items, aggregate coverage, and per-label query coverage. Ready and empty repositories both retain issue coverage; canonical repository metadata, including `archived`, remains unchanged.
+- Queried `good first issue` and `help wanted` separately through the existing fixed `https://api.github.com` client. Every request uses `state=open`, `sort=updated`, `direction=desc`, `per_page=100`, and one encoded supported label. No GitHub Search API, repository-controlled request URL, redirect, clone, execution, or GitHub write was added.
+- Filtered every Issues endpoint object containing `pull_request`, merged both streams, and deduplicated by issue number. Typed records retain number, title, validated GitHub issue URL, exact label names, normalized `updated_at`, assignee logins, explicit assignment state, and a plain-text body excerpt bounded to 500 Unicode characters.
+- Preserved label evidence without inference. This layer adds no ranking, difficulty estimate, time estimate, finding card, analyzer, or claim that `help wanted` is beginner-easy. Archived metadata is not converted into an active-maintenance claim.
+- Followed only a single validated `https://api.github.com` next link per label for the same canonical repository and exact query. Each stream fetches at most two pages. A valid remaining page after page two is not fetched and sets `sampled: true`, `capped: true`, incomplete aggregate coverage, and an explicit sampling message.
+- Successful empty streams use exactly `No matches were returned for the supported label query.` Partial or failed streams retain pages already validated and expose explicit coverage. Malformed issue data, invalid pagination, network failures, and upstream failures do not become empty results. If neither stream has usable coverage, the request fails safely.
+- Authentication, permission, and GitHub cooldown errors remain fatal even after another label returned useful data. Existing safe error codes, optional token handling, required headers, streamed 2 MiB response cap, 10-second timeout, redirect refusal, and fixed-host construction are reused.
+- Empty repositories still perform the two bounded label queries after GitHub confirms there is no commit, allowing trustworthy issue data alongside `snapshot: null`. A normal Phase 1D issue slice adds two to four requests, keeping the existing maximum snapshot flow below the specification's 30-request scan budget.
+- Updated README documentation for the expanded response, request bounds, evidence fields, empty/partial semantics, and still-deferred work. Browser result integration remains unimplemented.
+
+### Phase 1D verification
+
+| Command/check | Actual result |
+|---|---|
+| Initial focused Phase 1D test run before implementation | Failed as expected: all 10 initial issue tests observed missing issue retrieval; the later malformed-timestamp regression also failed before strict validation |
+| `npm run lint` | Passed |
+| `npm run typecheck` | Passed across all three workspaces |
+| `npm test` | Passed: 187 tests across 9 suites; 12 new Phase 1D tests and all 175 previous tests |
+| `npm run build` | Passed: Vite frontend and TypeScript server builds |
+| `npm run test:production` | Passed: health, frontend HTML, built JS/CSS assets, unknown API 404 |
+| `npm run test:e2e` | Passed: all 3 existing Chromium tests for the unchanged browser setup flow at 360/1280 widths |
+| Bounded anonymous live metadata → commit → tree → issue streams | Passed against `octocat/Hello-World`: exactly 5 requests total and exactly 2 issue requests |
+| Diff/secret review | Passed: scoped source/tests/docs only, no generated build output or credential pattern staged |
+
+The live smoke resolved default branch `master`, returned a ready non-archived snapshot, and completed one page for each supported label. Both streams returned no matches and produced the narrow supported-query message; the check did not depend on any public repository having matching issues. Live access remains outside automated tests.
+
+Offline tests cover separate label requests, both supported responses, exact query parameters, PR filtering, both-label deduplication, exact label retention, assigned/unassigned state, bounded excerpts, empty messages, empty-repository issue retrieval, validated second-page following, an available third page not fetched, cap/sampling disclosure, untrusted pagination-host rejection, malformed response and timestamp rejection, one-stream partial coverage, both-stream failure, and fatal issue authentication/rate-limit behavior. Existing snapshot/document/route fixtures were extended with deterministic empty issue pages so prior behavior remains exercised.
+
+The first sandboxed full-suite run again encountered transient Windows sandbox temporary-file `ENOENT` failures and also exposed expected old-fixture assumptions about the two new issue requests. The fixture expectations were updated; the unchanged complete suite then passed outside that sandbox. Playwright emitted the existing harmless `NO_COLOR`/`FORCE_COLOR` warnings. No required check was skipped or remains blocked.
+
+Phase 1D implementation commit: `1308abc` (`feat: add Phase 1D labeled issue retrieval`). No push or pull request was requested or attempted. This documentation follow-up records the verified local checkpoint.
+
 ## Remaining work
 
-Stop after Phase 1C. Next intended Phase 1 step: bounded labeled-issue retrieval with PR filtering, label-query deduplication, pagination caps, and pinned-snapshot context, followed separately by browser integration. Do not implement analyzers in that step. Analyzer rules, result UI, full reliability budgets, queue/cache/retries, CI, and Phase 6 reports remain deferred. AI stays disabled; no billable AI call, cloning, repository code execution, write to an analyzed repository, or public deployment occurred. Continue to update progress, run relevant checks, and commit/push after each authorized completed slice.
+Stop after Phase 1D. The recommended next step is the remaining Phase 1 browser integration for the already-typed repository, pinned documents, and labeled issues. Do not begin Phase 2 analyzers or issue opportunity cards as part of that step. Analyzer rules, ranking, result cards/filters, full reliability budgets, queue/cache/retries, CI, and Phase 6 reports remain deferred. AI stays disabled; no billable AI call, cloning, repository code execution, write to an analyzed repository, or public deployment occurred. Continue to update progress, run relevant checks, and commit/push after each authorized completed slice.
