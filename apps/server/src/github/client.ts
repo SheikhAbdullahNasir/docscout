@@ -1,11 +1,13 @@
 import type { PublicRepositoryMetadata, RepositorySnapshotResult } from '@docscout/shared';
 import { ApplicationError } from '../errors.js';
 import { validOwner, validRepo, type ValidatedRepository } from '../security/repositoryUrl.js';
+import { retrieveDocuments, type DocumentCandidate } from './documents.js';
 import { commitSnapshot, recursiveTree, validBranch } from './snapshot.js';
 
 const API_BASE = 'https://api.github.com';
 const RESPONSE_LIMIT = 2 * 1024 * 1024;
 const EMPTY_REPOSITORY = Symbol('empty-repository');
+const CONTENT_UNAVAILABLE = Symbol('content-unavailable');
 
 function upstreamError(message = 'GitHub returned an unavailable or invalid response. Please try again later.') {
   return new ApplicationError(502, 'GITHUB_UPSTREAM_FAILURE', message);
@@ -95,10 +97,15 @@ export class GitHubClient {
     if (value === EMPTY_REPOSITORY) return { status: 'empty', snapshot: null, message: 'This repository has no commit snapshot or files to scan yet.' };
     const { commitSha, treeSha } = commitSnapshot(value);
     const tree = recursiveTree(await this.requestJson(`${prefix}/git/trees/${treeSha}?recursive=1`, { stage: 'tree', limit: 10 * 1024 * 1024 }), treeSha);
-    return { status: 'ready', snapshot: { defaultBranch: repository.defaultBranch, commitSha, treeSha, tree } };
+    const documents = await retrieveDocuments(repository, commitSha, tree, async (candidate: DocumentCandidate) => {
+      const encodedPath = candidate.path.split('/').map((segment) => encodeURIComponent(segment)).join('/');
+      const content = await this.requestJson(`${prefix}/contents/${encodedPath}?ref=${encodeURIComponent(commitSha)}`, { stage: 'content' });
+      return content === CONTENT_UNAVAILABLE ? { status: 'unavailable' } : { status: 'available', value: content };
+    });
+    return { status: 'ready', snapshot: { defaultBranch: repository.defaultBranch, commitSha, treeSha, tree, documents } };
   }
 
-  private async requestJson(path: string, options: { stage?: 'commit' | 'tree'; limit?: number } = {}): Promise<unknown> {
+  private async requestJson(path: string, options: { stage?: 'commit' | 'tree' | 'content'; limit?: number } = {}): Promise<unknown> {
     const headers: Record<string, string> = {
       Accept: 'application/vnd.github+json',
       'X-GitHub-Api-Version': '2026-03-10',
@@ -117,6 +124,10 @@ export class GitHubClient {
           if (typeof message === 'string' && /^Git Repository is empty\.?$/i.test(message)) return EMPTY_REPOSITORY;
         } catch { /* Unconfirmed conflicts remain commit failures. */ }
         throw new ApplicationError(502, 'COMMIT_LOOKUP_FAILED', 'The default branch commit could not be resolved. Please check the repository and retry.');
+      }
+      if (options.stage === 'content' && response.status !== 401 && response.status !== 403 && response.status !== 429) {
+        await response.body?.cancel();
+        return CONTENT_UNAVAILABLE;
       }
       // Do not follow redirects, including GitHub repository-renaming redirects.
       // Every status consumes/cancels its body; errors never copy upstream messages.
@@ -142,13 +153,15 @@ export class GitHubClient {
       if (response.status === 403) {
         throw new ApplicationError(502, 'GITHUB_FORBIDDEN', 'GitHub denied this request. Check repository availability and server token permissions.');
       }
-      if (options.stage) {
+      if (options.stage === 'commit' || options.stage === 'tree') {
         throw new ApplicationError(502, options.stage === 'commit' ? 'COMMIT_LOOKUP_FAILED' : 'TREE_LOOKUP_FAILED',
           options.stage === 'commit' ? 'The default branch commit could not be resolved. Please check the repository and retry.'
             : 'The pinned repository tree could not be retrieved. Path coverage is unavailable.');
       }
       throw upstreamError();
     } catch (error) {
+      if (options.stage === 'content' && (!(error instanceof ApplicationError)
+        || error.code === 'GITHUB_UPSTREAM_FAILURE')) return CONTENT_UNAVAILABLE;
       if (error instanceof ApplicationError) throw error;
       throw upstreamError('GitHub could not be reached. Please try again later.');
     }

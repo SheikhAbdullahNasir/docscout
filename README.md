@@ -1,6 +1,6 @@
 # DocScout
 
-DocScout is a local tool being built to help new contributors find evidence-backed tasks in public GitHub repositories. `PROJECT_SPEC.md` is the approved specification. Phase 0, metadata Phase 1A, and snapshot/tree Phase 1B are implemented; Phase 1 as a whole is incomplete.
+DocScout is a local tool being built to help new contributors find evidence-backed tasks in public GitHub repositories. `PROJECT_SPEC.md` is the approved specification. Phase 0 and GitHub foundation Phases 1A–1C are implemented; Phase 1 as a whole is incomplete.
 
 ## Prerequisites
 
@@ -20,7 +20,7 @@ Open http://127.0.0.1:5173. The server runs at http://127.0.0.1:3001; Vite proxi
 
 No credentials or `.env` file are needed. Optional later server settings are documented in `.env.example`; credentials are blank. If you copy it to root `.env`, keep that file private. Do not put secrets in `VITE_` variables or paste credentials into chat. Development expects server port 3001 because the Vite proxy uses it.
 
-The form accepts a basic GitHub repository URL shape, supports Enter submission, and shows inline errors. Submitting a valid shape displays a Phase 1 notice. It sends no scan request. The server metadata and snapshot endpoints described below are available separately. File/issue reads, scan results, and analyzers are future steps. AI has no implementation or runtime SDK and remains disabled regardless of environment keys. There is no public deployment.
+The form accepts a basic GitHub repository URL shape, supports Enter submission, and shows inline errors. Submitting a valid shape displays a Phase 1 notice. It sends no scan request. The server metadata and snapshot endpoints described below are available separately. Issue reads, browser scan results, and analyzers are future steps. AI has no implementation or runtime SDK and remains disabled regardless of environment keys. There is no public deployment.
 
 ## Phase 1A metadata endpoint
 
@@ -38,11 +38,21 @@ This slice uses a 10-second request timeout and 2 MiB streamed response cap, wit
 
 `POST /api/repository/snapshot` accepts the same `{ repositoryUrl }` JSON and first fetches public canonical metadata. It resolves the actual default branch through the [commit endpoint](https://docs.github.com/en/rest/commits/commits#get-a-commit), encoding the entire branch as one parameter (including `/`). It fetches the [recursive Git tree](https://docs.github.com/en/rest/git/trees#get-a-tree) using the commit's exact tree SHA.
 
-Returns `{ schemaVersion: 1, repository, status: "ready", snapshot: { defaultBranch, commitSha, treeSha, tree: { entries, truncated, complete } } }`. Entries retain `path`, `type`, `mode`, `sha`, and optional `size`; response URLs and other fields are discarded. Path case stays exact. `truncated: true` always means `complete: false`; absent paths in that response cannot prove a file is missing. No missing-path analysis is implemented.
+Returns `{ schemaVersion: 1, repository, status: "ready", snapshot: { defaultBranch, commitSha, treeSha, tree, documents } }`. Tree entries retain `path`, `type`, `mode`, `sha`, and optional `size`; response URLs and other fields are discarded. Path case stays exact. `truncated: true` always means `complete: false`; absent paths in that response cannot prove a file is missing. No missing-path analysis is implemented.
 
 When GitHub confirms an empty repository via a commit 409 and its known empty-repository message, the endpoint returns HTTP 200 with metadata, `status: "empty"`, `snapshot: null`, and a readable message. Other commit failures (including an unavailable branch 404 or an unrelated 409) return safe errors, rather than falsely claiming emptiness. Tree lookup failure is also a safe error with no usable coverage claim. Existing auth/cooldown handling applies at each stage.
 
-This chain makes at most three requests, with no retries or response URL following. The tree has a 10 MiB streamed input cap; other responses retain 2 MiB. Each request has a 10-second timeout. Snapshot JSON exceeding the spec's 3 MiB browser-response cap is rejected with a readable error, never silently truncated and marked complete. File contents, issues, file selection, queue/cache, and full scan reliability remain later steps.
+The metadata/commit/tree foundation makes three requests, followed by at most 15 selected-content requests. There are no retries or response URL redirects. The tree has a 10 MiB streamed input cap; other GitHub JSON responses retain 2 MiB. Each request has a 10-second timeout. Snapshot JSON exceeding the spec's 3 MiB browser-response cap is rejected with a readable error, never silently truncated and marked complete. Queue/cache and full scan reliability remain later steps.
+
+## Phase 1C selected documents
+
+The snapshot uses its returned tree to select one supported root Markdown README, repository-local `CONTRIBUTING.md` using root → `.github/` → `docs/` precedence, exact root `package.json`, and up to 12 sorted Markdown files below `docs/`. Exact repository path casing is retained. Selected symlinks and submodules are skipped, and selected contribution guidance is not duplicated in the additional docs list.
+
+Every selected ordinary file is requested only through `GET https://api.github.com/repos/{owner}/{repo}/contents/{path}?ref={commitSha}`. Path segments and the commit ref are encoded; moving branch names, `download_url`, repository-provided URLs, and document links are never fetched. Evidence links use `github.com/{owner}/{repo}/blob/{commitSha}/{path}` so they remain pinned to the scanned commit.
+
+Contents responses must be a matching Base64 file object. Decoded UTF-8 is limited to 256 KiB per file and 2 MiB combined. Malformed Base64/JSON, invalid UTF-8, binary text, Git LFS pointers, oversized files, and individual unavailable optional files become typed skips while other usable documents remain. Authentication, permission, and cooldown errors remain request failures. Missing optional files are explicit; when the tree is truncated, absent selections are `unknown` and `documents.selectionComplete` is false because unseen paths could change precedence or ordering.
+
+Issues, issue labels, analyzers, browser result integration, and repository-content execution are not part of Phase 1C.
 
 ## Verification
 

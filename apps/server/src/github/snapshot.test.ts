@@ -12,13 +12,20 @@ const repository: PublicRepositoryMetadata = {
 };
 const commit = { sha: commitSha, commit: { tree: { sha: treeSha, url: 'https://evil.test/tree' } }, url: 'https://evil.test/commit' };
 const entries = [
-  { path: 'README.md', type: 'blob', mode: '100644', sha: blobSha, size: 12, url: 'https://evil.test/blob' },
+  { path: 'LICENSE.md', type: 'blob', mode: '100644', sha: blobSha, size: 12, url: 'https://evil.test/blob' },
   { path: 'Docs', type: 'tree', mode: '040000', sha: treeSha },
   { path: 'Docs/Guide.MD', type: 'blob', mode: '100755', sha: blobSha, size: 24 },
   { path: 'link', type: 'blob', mode: '120000', sha: blobSha, size: 8 },
   { path: 'vendor', type: 'commit', mode: '160000', sha: commitSha },
 ];
 const tree = { sha: treeSha, tree: entries, truncated: false, url: 'https://evil.test/tree' };
+const missingDocuments = {
+  selectionComplete: true,
+  readme: { status: 'unavailable', message: 'No supported root Markdown README found.' },
+  contributing: { status: 'unavailable', message: 'Repository-local contribution guidance is unavailable.' },
+  packageJson: { status: 'unavailable', message: 'No root package.json was found.' },
+  docs: [], skipped: [], omissions: [],
+};
 
 describe('default-branch snapshot', () => {
   it.each(['main', 'develop', 'release/docs', 'topic/#percent%'])('pins actual branch %s to commit and recursive tree', async (defaultBranch) => {
@@ -27,6 +34,7 @@ describe('default-branch snapshot', () => {
     expect(result).toEqual({ status: 'ready', snapshot: {
       defaultBranch, commitSha, treeSha,
       tree: { entries: entries.map(({ url: _url, ...entry }) => { void _url; return entry; }), truncated: false, complete: true },
+      documents: missingDocuments,
     } });
     expect(fetcher.mock.calls.map(([url]) => url)).toEqual([
       `https://api.github.com/repos/Canonical/Repo/commits/${encodeURIComponent(defaultBranch)}`,
@@ -47,7 +55,7 @@ describe('default-branch snapshot', () => {
     const fetcher = vi.fn<typeof fetch>().mockResolvedValueOnce(Response.json(commit))
       .mockResolvedValueOnce(Response.json({ ...tree, truncated: true }));
     const result = await new GitHubClient({ fetcher }).getSnapshot(repository);
-    expect(result).toMatchObject({ status: 'ready', snapshot: { tree: { complete: false, truncated: true, entries: [{ path: 'README.md' }, { path: 'Docs' }, { path: 'Docs/Guide.MD' }, { path: 'link' }, { path: 'vendor' }] } } });
+    expect(result).toMatchObject({ status: 'ready', snapshot: { tree: { complete: false, truncated: true, entries: [{ path: 'LICENSE.md' }, { path: 'Docs' }, { path: 'Docs/Guide.MD' }, { path: 'link' }, { path: 'vendor' }] } } });
   });
 
   it('represents an empty repository without fetching a tree', async () => {

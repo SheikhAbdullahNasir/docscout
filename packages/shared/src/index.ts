@@ -25,12 +25,46 @@ export type RepositoryTreeEntry = {
   size?: number;
 };
 
+export type RepositoryDocumentCategory = 'readme' | 'contributing' | 'package-json' | 'docs';
+
+export type RepositoryDocument = {
+  path: string;
+  category: RepositoryDocumentCategory;
+  sourceUrl: string;
+  text: string;
+  sha: string;
+  decodedSize: number;
+  reportedSize: number;
+};
+
+export type RepositoryDocumentState =
+  | { status: 'available'; document: RepositoryDocument }
+  | { status: 'unavailable' | 'unknown'; message: string };
+
+export type RepositoryDocumentSkip = {
+  path: string;
+  category: RepositoryDocumentCategory;
+  reason: 'symlink' | 'submodule' | 'oversized' | 'binary' | 'git-lfs-pointer'
+    | 'malformed' | 'unavailable' | 'combined-content-limit';
+};
+
+export type RepositoryDocuments = {
+  selectionComplete: boolean;
+  readme: RepositoryDocumentState;
+  contributing: RepositoryDocumentState;
+  packageJson: RepositoryDocumentState;
+  docs: RepositoryDocument[];
+  skipped: RepositoryDocumentSkip[];
+  omissions: Array<'docs-limit' | 'combined-content-limit'>;
+};
+
 export type RepositorySnapshotResult =
   | { status: 'ready'; snapshot: {
     defaultBranch: string;
     commitSha: string;
     treeSha: string;
     tree: { entries: RepositoryTreeEntry[]; truncated: boolean; complete: boolean };
+    documents: RepositoryDocuments;
   } }
   | { status: 'empty'; snapshot: null; message: string };
 

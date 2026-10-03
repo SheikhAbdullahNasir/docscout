@@ -17,6 +17,19 @@ describe('snapshot endpoint', () => {
     expect(response.status).toBe(200);
     expect(response.body).toEqual({ schemaVersion: 1, repository: { owner: 'Canonical', name: 'Repo', url: metadata.html_url, private: false, archived: false, defaultBranch: 'release/docs' }, status: 'ready', snapshot: {
       defaultBranch: 'release/docs', commitSha, treeSha, tree: { entries: [], truncated, complete: !truncated },
+      documents: {
+        selectionComplete: !truncated,
+        readme: truncated
+          ? { status: 'unknown', message: 'README availability is unknown because tree path coverage is incomplete.' }
+          : { status: 'unavailable', message: 'No supported root Markdown README found.' },
+        contributing: truncated
+          ? { status: 'unknown', message: 'Repository-local contribution guidance availability is unknown because tree path coverage is incomplete.' }
+          : { status: 'unavailable', message: 'Repository-local contribution guidance is unavailable.' },
+        packageJson: truncated
+          ? { status: 'unknown', message: 'Root package.json availability is unknown because tree path coverage is incomplete.' }
+          : { status: 'unavailable', message: 'No root package.json was found.' },
+        docs: [], skipped: [], omissions: [],
+      },
     } });
     expect(fetcher).toHaveBeenCalledTimes(3);
     expect(fetcher.mock.calls.every(([url]) => !/\/contents\/|\/issues/.test(String(url)))).toBe(true);
