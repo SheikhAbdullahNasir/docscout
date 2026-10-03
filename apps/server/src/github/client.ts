@@ -2,6 +2,7 @@ import type { PublicRepositoryMetadata, RepositorySnapshotResult } from '@docsco
 import { ApplicationError } from '../errors.js';
 import { validOwner, validRepo, type ValidatedRepository } from '../security/repositoryUrl.js';
 import { retrieveDocuments, type DocumentCandidate } from './documents.js';
+import { retrieveIssues } from './issues.js';
 import { commitSnapshot, recursiveTree, validBranch } from './snapshot.js';
 
 const API_BASE = 'https://api.github.com';
@@ -71,10 +72,12 @@ function retryTime(headers: Headers): string | undefined {
 export class GitHubClient {
   private readonly fetcher: typeof fetch;
   private readonly token?: string;
+  private readonly now: () => Date;
 
-  constructor(options: { fetcher?: typeof fetch; token?: string } = {}) {
+  constructor(options: { fetcher?: typeof fetch; token?: string; now?: () => Date } = {}) {
     this.fetcher = options.fetcher ?? fetch;
     this.token = options.token?.trim() || undefined;
+    this.now = options.now ?? (() => new Date());
   }
 
   async getRepository(repository: ValidatedRepository): Promise<PublicRepositoryMetadata> {
@@ -94,7 +97,10 @@ export class GitHubClient {
       html_url: metadata.url, private: metadata.private, archived: metadata.archived, default_branch: metadata.defaultBranch });
     const prefix = `/repos/${encodeURIComponent(repository.owner)}/${encodeURIComponent(repository.name)}`;
     const value = await this.requestJson(`${prefix}/commits/${encodeURIComponent(repository.defaultBranch)}`, { stage: 'commit' });
-    if (value === EMPTY_REPOSITORY) return { status: 'empty', snapshot: null, message: 'This repository has no commit snapshot or files to scan yet.' };
+    if (value === EMPTY_REPOSITORY) {
+      const issues = await this.getIssues(repository, prefix);
+      return { status: 'empty', snapshot: null, message: 'This repository has no commit snapshot or files to scan yet.', issues };
+    }
     const { commitSha, treeSha } = commitSnapshot(value);
     const tree = recursiveTree(await this.requestJson(`${prefix}/git/trees/${treeSha}?recursive=1`, { stage: 'tree', limit: 10 * 1024 * 1024 }), treeSha);
     const documents = await retrieveDocuments(repository, commitSha, tree, async (candidate: DocumentCandidate) => {
@@ -102,10 +108,23 @@ export class GitHubClient {
       const content = await this.requestJson(`${prefix}/contents/${encodedPath}?ref=${encodeURIComponent(commitSha)}`, { stage: 'content' });
       return content === CONTENT_UNAVAILABLE ? { status: 'unavailable' } : { status: 'available', value: content };
     });
-    return { status: 'ready', snapshot: { defaultBranch: repository.defaultBranch, commitSha, treeSha, tree, documents } };
+    const issues = await this.getIssues(repository, prefix);
+    return { status: 'ready', snapshot: { defaultBranch: repository.defaultBranch, commitSha, treeSha, tree, documents }, issues };
   }
 
-  private async requestJson(path: string, options: { stage?: 'commit' | 'tree' | 'content'; limit?: number } = {}): Promise<unknown> {
+  private async getIssues(repository: PublicRepositoryMetadata, prefix: string) {
+    return retrieveIssues(repository, async (label, page) => {
+      const query = `state=open&labels=${encodeURIComponent(label)}&sort=updated&direction=desc&per_page=100&page=${page}`;
+      const response = await this.requestResponse(`${prefix}/issues?${query}`, { stage: 'issues' });
+      return { value: response.value, link: response.headers.get('link') };
+    }, this.now);
+  }
+
+  private async requestJson(path: string, options: { stage?: 'commit' | 'tree' | 'content' | 'issues'; limit?: number } = {}): Promise<unknown> {
+    return (await this.requestResponse(path, options)).value;
+  }
+
+  private async requestResponse(path: string, options: { stage?: 'commit' | 'tree' | 'content' | 'issues'; limit?: number } = {}) {
     const headers: Record<string, string> = {
       Accept: 'application/vnd.github+json',
       'X-GitHub-Api-Version': '2026-03-10',
@@ -117,17 +136,19 @@ export class GitHubClient {
         `${API_BASE}${path}`,
         { method: 'GET', headers, redirect: 'manual', signal: AbortSignal.timeout(10_000) },
       );
-      if (response.status === 200) return await boundedJson(response, options.limit);
+      if (response.status === 200) return { value: await boundedJson(response, options.limit), headers: new Headers(response.headers) };
       if (response.status === 409 && options.stage === 'commit') {
         try {
           const message = record(await boundedJson(response))?.message;
-          if (typeof message === 'string' && /^Git Repository is empty\.?$/i.test(message)) return EMPTY_REPOSITORY;
+          if (typeof message === 'string' && /^Git Repository is empty\.?$/i.test(message)) {
+            return { value: EMPTY_REPOSITORY, headers: new Headers(response.headers) };
+          }
         } catch { /* Unconfirmed conflicts remain commit failures. */ }
         throw new ApplicationError(502, 'COMMIT_LOOKUP_FAILED', 'The default branch commit could not be resolved. Please check the repository and retry.');
       }
       if (options.stage === 'content' && response.status !== 401 && response.status !== 403 && response.status !== 429) {
         await response.body?.cancel();
-        return CONTENT_UNAVAILABLE;
+        return { value: CONTENT_UNAVAILABLE, headers: new Headers(response.headers) };
       }
       // Do not follow redirects, including GitHub repository-renaming redirects.
       // Every status consumes/cancels its body; errors never copy upstream messages.
@@ -161,7 +182,7 @@ export class GitHubClient {
       throw upstreamError();
     } catch (error) {
       if (options.stage === 'content' && (!(error instanceof ApplicationError)
-        || error.code === 'GITHUB_UPSTREAM_FAILURE')) return CONTENT_UNAVAILABLE;
+        || error.code === 'GITHUB_UPSTREAM_FAILURE')) return { value: CONTENT_UNAVAILABLE, headers: new Headers() };
       if (error instanceof ApplicationError) throw error;
       throw upstreamError('GitHub could not be reached. Please try again later.');
     }

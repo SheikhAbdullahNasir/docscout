@@ -12,7 +12,8 @@ const input = { repositoryUrl: 'https://github.com/input/repo' };
 describe('snapshot endpoint', () => {
   it.each([false, true])('returns pinned data and explicit coverage; truncated=%s', async (truncated) => {
     const fetcher = vi.fn<typeof fetch>().mockResolvedValueOnce(Response.json(metadata))
-      .mockResolvedValueOnce(Response.json(commit)).mockResolvedValueOnce(Response.json({ sha: treeSha, truncated, tree: [] }));
+      .mockResolvedValueOnce(Response.json(commit)).mockResolvedValueOnce(Response.json({ sha: treeSha, truncated, tree: [] }))
+      .mockResolvedValueOnce(Response.json([])).mockResolvedValueOnce(Response.json([]));
     const response = await request(createApp({ github: new GitHubClient({ fetcher }) })).post('/api/repository/snapshot').send(input);
     expect(response.status).toBe(200);
     expect(response.body).toEqual({ schemaVersion: 1, repository: { owner: 'Canonical', name: 'Repo', url: metadata.html_url, private: false, archived: false, defaultBranch: 'release/docs' }, status: 'ready', snapshot: {
@@ -30,18 +31,27 @@ describe('snapshot endpoint', () => {
           : { status: 'unavailable', message: 'No root package.json was found.' },
         docs: [], skipped: [], omissions: [],
       },
+    }, issues: {
+      fetchedAt: expect.any(String), items: [], coverage: { complete: true, sampled: false, queries: [
+        { label: 'good first issue', status: 'complete', pagesFetched: 1, capped: false,
+          message: 'No matches were returned for the supported label query.' },
+        { label: 'help wanted', status: 'complete', pagesFetched: 1, capped: false,
+          message: 'No matches were returned for the supported label query.' },
+      ] },
     } });
-    expect(fetcher).toHaveBeenCalledTimes(3);
-    expect(fetcher.mock.calls.every(([url]) => !/\/contents\/|\/issues/.test(String(url)))).toBe(true);
+    expect(fetcher).toHaveBeenCalledTimes(5);
+    expect(fetcher.mock.calls.every(([url]) => !/\/contents\//.test(String(url)))).toBe(true);
   });
 
   it('preserves metadata with null snapshot when GitHub reports empty', async () => {
     const fetcher = vi.fn<typeof fetch>().mockResolvedValueOnce(Response.json(metadata))
-      .mockResolvedValueOnce(Response.json({ message: 'Git Repository is empty.' }, { status: 409 }));
+      .mockResolvedValueOnce(Response.json({ message: 'Git Repository is empty.' }, { status: 409 }))
+      .mockResolvedValueOnce(Response.json([])).mockResolvedValueOnce(Response.json([]));
     const response = await request(createApp({ github: new GitHubClient({ fetcher }) })).post('/api/repository/snapshot').send(input);
     expect(response.status).toBe(200);
     expect(response.body).toMatchObject({ repository: { owner: 'Canonical', defaultBranch: 'release/docs' }, status: 'empty', snapshot: null, message: expect.any(String) });
-    expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(response.body).toMatchObject({ issues: { items: [], coverage: { complete: true } } });
+    expect(fetcher).toHaveBeenCalledTimes(4);
   });
 
   it('rejects private metadata before requesting commits', async () => {
@@ -62,7 +72,8 @@ describe('snapshot endpoint', () => {
   it('rejects oversized browser results without silently returning partial paths as complete', async () => {
     const entries = Array.from({ length: 3200 }, (_, index) => ({ path: `${'a'.repeat(1000)}/${index}`, type: 'blob', mode: '100644', sha: commitSha }));
     const fetcher = vi.fn<typeof fetch>().mockResolvedValueOnce(Response.json(metadata))
-      .mockResolvedValueOnce(Response.json(commit)).mockResolvedValueOnce(Response.json({ sha: treeSha, truncated: false, tree: entries }));
+      .mockResolvedValueOnce(Response.json(commit)).mockResolvedValueOnce(Response.json({ sha: treeSha, truncated: false, tree: entries }))
+      .mockResolvedValueOnce(Response.json([])).mockResolvedValueOnce(Response.json([]));
     const response = await request(createApp({ github: new GitHubClient({ fetcher }) })).post('/api/repository/snapshot').send(input);
     expect(response.status).toBe(502);
     expect(response.body.error.code).toBe('TREE_LOOKUP_FAILED');

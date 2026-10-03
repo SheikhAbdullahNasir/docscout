@@ -26,19 +26,30 @@ const missingDocuments = {
   packageJson: { status: 'unavailable', message: 'No root package.json was found.' },
   docs: [], skipped: [], omissions: [],
 };
+const emptyIssues = {
+  fetchedAt: expect.any(String), items: [], coverage: { complete: true, sampled: false, queries: [
+    { label: 'good first issue', status: 'complete', pagesFetched: 1, capped: false,
+      message: 'No matches were returned for the supported label query.' },
+    { label: 'help wanted', status: 'complete', pagesFetched: 1, capped: false,
+      message: 'No matches were returned for the supported label query.' },
+  ] },
+};
 
 describe('default-branch snapshot', () => {
   it.each(['main', 'develop', 'release/docs', 'topic/#percent%'])('pins actual branch %s to commit and recursive tree', async (defaultBranch) => {
-    const fetcher = vi.fn<typeof fetch>().mockResolvedValueOnce(Response.json(commit)).mockResolvedValueOnce(Response.json(tree));
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValueOnce(Response.json(commit)).mockResolvedValueOnce(Response.json(tree))
+      .mockResolvedValueOnce(Response.json([])).mockResolvedValueOnce(Response.json([]));
     const result = await new GitHubClient({ fetcher, token: 'test-token' }).getSnapshot({ ...repository, defaultBranch });
     expect(result).toEqual({ status: 'ready', snapshot: {
       defaultBranch, commitSha, treeSha,
       tree: { entries: entries.map(({ url: _url, ...entry }) => { void _url; return entry; }), truncated: false, complete: true },
       documents: missingDocuments,
-    } });
+    }, issues: emptyIssues });
     expect(fetcher.mock.calls.map(([url]) => url)).toEqual([
       `https://api.github.com/repos/Canonical/Repo/commits/${encodeURIComponent(defaultBranch)}`,
       `https://api.github.com/repos/Canonical/Repo/git/trees/${treeSha}?recursive=1`,
+      'https://api.github.com/repos/Canonical/Repo/issues?state=open&labels=good%20first%20issue&sort=updated&direction=desc&per_page=100&page=1',
+      'https://api.github.com/repos/Canonical/Repo/issues?state=open&labels=help%20wanted&sort=updated&direction=desc&per_page=100&page=1',
     ]);
     for (const [, options] of fetcher.mock.calls) {
       const headers = new Headers(options?.headers);
@@ -53,15 +64,18 @@ describe('default-branch snapshot', () => {
 
   it('marks truncated trees incomplete without changing paths', async () => {
     const fetcher = vi.fn<typeof fetch>().mockResolvedValueOnce(Response.json(commit))
-      .mockResolvedValueOnce(Response.json({ ...tree, truncated: true }));
+      .mockResolvedValueOnce(Response.json({ ...tree, truncated: true }))
+      .mockResolvedValueOnce(Response.json([])).mockResolvedValueOnce(Response.json([]));
     const result = await new GitHubClient({ fetcher }).getSnapshot(repository);
     expect(result).toMatchObject({ status: 'ready', snapshot: { tree: { complete: false, truncated: true, entries: [{ path: 'LICENSE.md' }, { path: 'Docs' }, { path: 'Docs/Guide.MD' }, { path: 'link' }, { path: 'vendor' }] } } });
   });
 
   it('represents an empty repository without fetching a tree', async () => {
-    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(Response.json({ message: 'Git Repository is empty.' }, { status: 409 }));
-    expect(await new GitHubClient({ fetcher }).getSnapshot(repository)).toEqual({ status: 'empty', snapshot: null, message: 'This repository has no commit snapshot or files to scan yet.' });
-    expect(fetcher).toHaveBeenCalledTimes(1);
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValueOnce(Response.json({ message: 'Git Repository is empty.' }, { status: 409 }))
+      .mockResolvedValueOnce(Response.json([])).mockResolvedValueOnce(Response.json([]));
+    expect(await new GitHubClient({ fetcher }).getSnapshot(repository)).toEqual({ status: 'empty', snapshot: null,
+      message: 'This repository has no commit snapshot or files to scan yet.', issues: emptyIssues });
+    expect(fetcher).toHaveBeenCalledTimes(3);
   });
 
   it.each([404, 409, 422, 500])('does not mistake commit HTTP %i for an empty repository', async (status) => {
@@ -117,20 +131,24 @@ describe('default-branch snapshot', () => {
   it('keeps canonical metadata → commit → tree ordered and public-only', async () => {
     const fetcher = vi.fn<typeof fetch>().mockResolvedValueOnce(Response.json({ owner: { login: repository.owner }, name: repository.name,
       html_url: repository.url, private: false, archived: false, default_branch: 'develop' }))
-      .mockResolvedValueOnce(Response.json(commit)).mockResolvedValueOnce(Response.json(tree));
+      .mockResolvedValueOnce(Response.json(commit)).mockResolvedValueOnce(Response.json(tree))
+      .mockResolvedValueOnce(Response.json([])).mockResolvedValueOnce(Response.json([]));
     const client = new GitHubClient({ fetcher });
     const metadata = await client.getRepository(parseRepositoryUrl('https://github.com/input/repo'));
     await client.getSnapshot(metadata);
     expect(fetcher.mock.calls.map(([url]) => url)).toEqual([
       'https://api.github.com/repos/input/repo', 'https://api.github.com/repos/Canonical/Repo/commits/develop',
       `https://api.github.com/repos/Canonical/Repo/git/trees/${treeSha}?recursive=1`,
+      'https://api.github.com/repos/Canonical/Repo/issues?state=open&labels=good%20first%20issue&sort=updated&direction=desc&per_page=100&page=1',
+      'https://api.github.com/repos/Canonical/Repo/issues?state=open&labels=help%20wanted&sort=updated&direction=desc&per_page=100&page=1',
     ]);
   });
 
   it('allows a tree response over 2 MiB but rejects over 10 MiB while streaming', async () => {
     for (const [bytes, valid] of [[2 * 1024 * 1024 + 100, true], [10 * 1024 * 1024 + 1, false]] as const) {
       const fetcher = vi.fn<typeof fetch>().mockResolvedValueOnce(Response.json(commit))
-        .mockResolvedValueOnce(Response.json({ ...tree, ignoredPadding: 'x'.repeat(bytes) }));
+        .mockResolvedValueOnce(Response.json({ ...tree, ignoredPadding: 'x'.repeat(bytes) }))
+        .mockResolvedValueOnce(Response.json([])).mockResolvedValueOnce(Response.json([]));
       const result = new GitHubClient({ fetcher }).getSnapshot(repository);
       if (valid) await expect(result).resolves.toMatchObject({ status: 'ready' });
       else await expect(result).rejects.toMatchObject({ code: 'GITHUB_UPSTREAM_FAILURE' });

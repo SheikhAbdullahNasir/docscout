@@ -24,6 +24,7 @@ function fetchFor(entries: RepositoryTreeEntry[], responses: Response[] = [], tr
   const fetcher = vi.fn<typeof fetch>().mockResolvedValueOnce(Response.json(commit))
     .mockResolvedValueOnce(Response.json({ sha: treeSha, tree: entries, truncated }));
   for (const response of responses) fetcher.mockResolvedValueOnce(response);
+  fetcher.mockResolvedValueOnce(Response.json([])).mockResolvedValueOnce(Response.json([]));
   return fetcher;
 }
 
@@ -59,6 +60,8 @@ describe('pinned selected repository documents', () => {
       `https://api.github.com/repos/Canonical/Repo/contents/.github/CONTRIBUTING.md?ref=${commitSha}`,
       `https://api.github.com/repos/Canonical/Repo/contents/package.json?ref=${commitSha}`,
       `https://api.github.com/repos/Canonical/Repo/contents/docs/Guide%20%231.md?ref=${commitSha}`,
+      'https://api.github.com/repos/Canonical/Repo/issues?state=open&labels=good%20first%20issue&sort=updated&direction=desc&per_page=100&page=1',
+      'https://api.github.com/repos/Canonical/Repo/issues?state=open&labels=help%20wanted&sort=updated&direction=desc&per_page=100&page=1',
     ]);
   });
 
@@ -124,7 +127,7 @@ describe('pinned selected repository documents', () => {
         { path: 'docs/e.md', reason: 'git-lfs-pointer' },
       ],
     } } });
-    expect(fetcher).toHaveBeenCalledTimes(7);
+    expect(fetcher).toHaveBeenCalledTimes(9);
   });
 
   it('stops before fetching content that would exceed the 2 MiB combined text budget', async () => {
@@ -145,7 +148,7 @@ describe('pinned selected repository documents', () => {
       { path: 'docs/8.md', reason: 'combined-content-limit' },
     ]);
     expect(documents?.omissions).toEqual(['combined-content-limit']);
-    expect(fetcher).toHaveBeenCalledTimes(11);
+    expect(fetcher).toHaveBeenCalledTimes(13);
   });
 
   it('preserves relevant authentication and cooldown errors from a selected content request', async () => {
@@ -169,8 +172,10 @@ describe('pinned selected repository documents', () => {
   });
 
   it('turns an optional content transport failure into an unavailable skip', async () => {
-    const fetcher = fetchFor([blob('README.md', 'text')]);
-    fetcher.mockRejectedValueOnce(new Error('secret transport context'));
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValueOnce(Response.json(commit))
+      .mockResolvedValueOnce(Response.json({ sha: treeSha, tree: [blob('README.md', 'text')], truncated: false }))
+      .mockRejectedValueOnce(new Error('secret transport context'))
+      .mockResolvedValueOnce(Response.json([])).mockResolvedValueOnce(Response.json([]));
     const result = await new GitHubClient({ fetcher }).getSnapshot(repository);
     expect(result).toMatchObject({ status: 'ready', snapshot: { documents: {
       readme: { status: 'unavailable' }, skipped: [{ path: 'README.md', reason: 'unavailable' }],

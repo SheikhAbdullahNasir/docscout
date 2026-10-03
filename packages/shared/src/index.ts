@@ -58,6 +58,37 @@ export type RepositoryDocuments = {
   omissions: Array<'docs-limit' | 'combined-content-limit'>;
 };
 
+export type SupportedIssueLabel = 'good first issue' | 'help wanted';
+
+export type RepositoryIssue = {
+  number: number;
+  title: string;
+  url: string;
+  labels: string[];
+  updatedAt: string;
+  assignees: string[];
+  assigned: boolean;
+  bodyExcerpt: string;
+};
+
+export type RepositoryIssueQueryCoverage = {
+  label: SupportedIssueLabel;
+  status: 'complete' | 'partial' | 'failed';
+  pagesFetched: number;
+  capped: boolean;
+  message?: string;
+};
+
+export type RepositoryIssues = {
+  fetchedAt: string;
+  items: RepositoryIssue[];
+  coverage: {
+    complete: boolean;
+    sampled: boolean;
+    queries: RepositoryIssueQueryCoverage[];
+  };
+};
+
 export type RepositorySnapshotResult =
   | { status: 'ready'; snapshot: {
     defaultBranch: string;
@@ -65,8 +96,8 @@ export type RepositorySnapshotResult =
     treeSha: string;
     tree: { entries: RepositoryTreeEntry[]; truncated: boolean; complete: boolean };
     documents: RepositoryDocuments;
-  } }
-  | { status: 'empty'; snapshot: null; message: string };
+  }; issues: RepositoryIssues }
+  | { status: 'empty'; snapshot: null; message: string; issues: RepositoryIssues };
 
 export type RepositorySnapshotResponse = RepositorySnapshotResult & {
   schemaVersion: 1;
