@@ -8,7 +8,8 @@ Approved source: `PROJECT_SPEC.md` version 1.0. Updated October 3, 2026.
 - [ ] Phase 1 — GitHub foundation and independent server URL validation.
   - [x] Phase 1A — strict server URL validation and public repository metadata only.
   - [x] Phase 1B — default-branch commit snapshot and bounded recursive tree.
-  - [ ] Remaining Phase 1 — selected files, guidance, labeled issues, and browser integration.
+  - [x] Phase 1C — deterministic selected-document paths and bounded pinned content retrieval.
+  - [ ] Remaining Phase 1 — labeled issues and browser integration.
 - [ ] Phase 2 — evidence-backed core analyzers.
 - [ ] Phase 3 — usable results and complete UI states.
 - [ ] Phase 4 — reliable core, security limits, fixtures, and CI.
@@ -106,6 +107,40 @@ Offline tests cover main/non-main/slash/special-character branches, canonical re
 
 Independent review found no blockers or important issues. No skipped or blocked verification. Implementation commit `3d4e6d6` (`feat: add Phase 1B pinned snapshot and recursive tree`) was successfully pushed to origin/main on October 3, 2026, preserving history without force. This documentation follow-up records the outcome; Phase 1 remains incomplete.
 
+## Phase 1C — selected pinned documents (October 3, 2026)
+
+- Extended the existing snapshot flow rather than adding another GitHub access layer. Selection uses the Phase 1B tree and retains exact repository paths and casing.
+- Root README selection supports Markdown README filenames case-insensitively, prefers exact `README.md`, and otherwise uses a deterministic alphabetical fallback. Complete-tree absence is exactly `No supported root Markdown README found.`; incomplete-tree absence remains unknown.
+- Repository-local `CONTRIBUTING.md` uses root → `.github/` → `docs/` precedence with case-insensitive filename matching. Only exact root `package.json` is selected. Up to 12 additional `.md` paths below exact `docs/` are selected in deterministic order, excluding selected contribution guidance.
+- Ordinary `100644` and `100755` blobs are analyzable. Matching symlinks and submodules are skipped with typed reasons. Git LFS pointer content is also skipped. No repository content is executed, imported, installed, built, or used as a request target.
+- Every selected file request is constructed from validated canonical identity and encoded path segments at fixed `https://api.github.com`, using `GET /repos/{owner}/{repo}/contents/{path}?ref={commitSha}`. Branch names, `download_url`, API-provided URLs, README links, and arbitrary repository-controlled URLs are never fetched.
+- Contents API responses must be matching Base64 file objects. Decoding uses strict UTF-8, rejects malformed Base64/shape/path/SHA/size, invalid UTF-8, clearly binary text, and Git LFS pointers. Each decoded file is capped at 256 KiB and combined selected text at 2 MiB; retrieval stops and records omissions when the combined limit is reached.
+- Typed documents retain category, actual path, blob SHA, reported and decoded byte sizes, bounded text, and a `github.com/.../blob/{commitSha}/...` evidence URL. Optional 404/5xx/redirect/network/malformed/oversized content failures become skips so other useful documents survive; authentication, permission, and cooldown failures remain scan errors.
+- Existing tree `truncated`/`complete` evidence remains unchanged. `documents.selectionComplete` mirrors path coverage: observed paths can be used from a truncated tree, but selection explicitly remains incomplete because unseen paths could change README/CONTRIBUTING precedence or docs ordering.
+- Updated README documentation for the expanded snapshot response, request budget, selected-content safety rules, and remaining scope. Issue retrieval, analyzers, browser result integration, queues/caches, AI, cloning, and repository-code execution remain unimplemented.
+
+### Phase 1C verification
+
+| Command/check | Actual result |
+|---|---|
+| `npm run lint` | Passed |
+| `npm run typecheck` | Passed across all workspaces |
+| `npm test` | Passed: 175 tests across 8 suites; all Phase 0/1A/1B regressions retained |
+| `npm run build` | Passed: Vite frontend and TypeScript server builds |
+| `npm run test:production` | Passed: health, frontend HTML, built JS/CSS assets, unknown API 404 |
+| `npm run test:e2e` | Passed: 3 existing Chromium tests covering health proxy, keyboard form/validation, local-only requests, and 360/1280 widths |
+| Bounded anonymous live metadata → commit → tree → selected content | Passed: `octocat/Spoon-Knife`, exactly 4 requests including one pinned Contents API request |
+
+Live evidence: default branch `main`; commit `d0dd1f61b33d64e29d8bc1372a94ef6a2fee76a9`; tree `d7cee29eaada459ba458a63ad983a89915c6a10a`; 3 entries; tree not truncated; `documents.selectionComplete: true`; `README.md` fetched as 780 decoded UTF-8 bytes with source URL pinned to that commit. CONTRIBUTING, root `package.json`, and docs Markdown were absent and remained optional. An initial live check of `octocat/Hello-World` also verified complete-tree unsupported-README absence without attempting content retrieval. Live access is not part of automated tests.
+
+Offline tests cover exact and differently-cased README selection, multiple candidates and fallback order, README absence, all CONTRIBUTING precedence levels and absence, root-only manifest behavior, sorted recursive docs selection and 12-file cap, non-Markdown/excluded guidance, exact casing, symlink/submodule skips, normal Base64 UTF-8, malformed/mismatched responses, per-file and exact combined-budget boundaries, binary and LFS content, optional missing/5xx/redirect/network/malformed/oversized responses, fatal auth/permission/cooldown errors, commit-pinned encoded requests and source URLs, and complete versus truncated selection coverage.
+
+The initial sandboxed multi-suite Vitest runs hit transient Windows sandbox temporary-file errors, and Supertest could not bind loopback inside that sandbox. Re-running the unchanged suite with the required execution permission passed all 175 tests. Playwright again emitted harmless `NO_COLOR`/`FORCE_COLOR` warnings. No implementation or verification blocker remains.
+
+Independent review initially identified incomplete-tree selection disclosure and stale README text. Added `documents.selectionComplete`, truncated fallback fixtures, the optional-failure matrix, and current README documentation. Follow-up review found no code regression or remaining Critical/Important implementation issue; only this required progress update remained.
+
+Phase 1C implementation commit: `0c37f2d` (`feat: add Phase 1C pinned document retrieval`). The commit was created locally on `main`. A non-force push to the existing `origin/main` was attempted only after verification, but the execution approval gate rejected direct default-branch mutation because this request did not explicitly authorize that remote action. No workaround or alternate push was attempted. This documentation follow-up records the verified local checkpoint and the blocked push accurately.
+
 ## Remaining work
 
-Stop after Phase 1B. Next intended step: deterministic selection of supported README, repository-local CONTRIBUTING, root manifest, and bounded docs paths, then fetch selected small text files at the pinned commit SHA with offline fixtures. Do not select/fetch file contents or issues in this task. Labeled issues and browser result integration remain later Phase 1 work; analyzers, result UI, full reliability budgets, queue/cache/retries, CI, and Phase 6 reports remain deferred. AI stays disabled; no billable AI call, cloning, repository code execution, or public deployment occurred. Continue to update progress, run relevant checks, and commit/push after each authorized completed slice.
+Stop after Phase 1C. Next intended Phase 1 step: bounded labeled-issue retrieval with PR filtering, label-query deduplication, pagination caps, and pinned-snapshot context, followed separately by browser integration. Do not implement analyzers in that step. Analyzer rules, result UI, full reliability budgets, queue/cache/retries, CI, and Phase 6 reports remain deferred. AI stays disabled; no billable AI call, cloning, repository code execution, write to an analyzed repository, or public deployment occurred. Continue to update progress, run relevant checks, and commit/push after each authorized completed slice.
