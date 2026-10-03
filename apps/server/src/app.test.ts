@@ -15,7 +15,7 @@ describe('Phase 0 API', () => {
     }
   });
 
-  it('does not expose analysis or AI endpoints in Phase 0', async () => {
+  it('keeps analysis and AI endpoints unavailable in the metadata foundation', async () => {
     for (const path of ['/api/analyze', '/api/explain', '/api/unknown']) {
       expect((await request(createApp()).post(path)).status).toBe(404);
     }

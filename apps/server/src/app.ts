@@ -1,14 +1,17 @@
 import express from 'express';
 import { fileURLToPath } from 'node:url';
 import type { HealthResponse } from '@docscout/shared';
+import { GitHubClient } from './github/client.js';
+import { repositoryRoute } from './routes/repository.js';
 
-export function createApp() {
+export function createApp(options: { github?: GitHubClient } = {}) {
   const app = express();
   app.disable('x-powered-by');
   app.get('/api/health', (_req, res) => {
     const health: HealthResponse = { status: 'ok' };
     res.json(health);
   });
+  app.use('/api/repository', repositoryRoute(options.github ?? new GitHubClient({ token: process.env.GITHUB_TOKEN })));
   app.use('/api', (_req, res) => {
     res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Endpoint unavailable in Phase 0.' } });
   });
