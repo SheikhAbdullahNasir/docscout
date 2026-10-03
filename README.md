@@ -1,6 +1,6 @@
 # DocScout
 
-DocScout is a local tool being built to help new contributors find evidence-backed tasks in public GitHub repositories. `PROJECT_SPEC.md` is the approved specification. Phase 0 and the metadata-only Phase 1A foundation are implemented; Phase 1 as a whole is incomplete.
+DocScout is a local tool being built to help new contributors find evidence-backed tasks in public GitHub repositories. `PROJECT_SPEC.md` is the approved specification. Phase 0, metadata Phase 1A, and snapshot/tree Phase 1B are implemented; Phase 1 as a whole is incomplete.
 
 ## Prerequisites
 
@@ -20,7 +20,7 @@ Open http://127.0.0.1:5173. The server runs at http://127.0.0.1:3001; Vite proxi
 
 No credentials or `.env` file are needed. Optional later server settings are documented in `.env.example`; credentials are blank. If you copy it to root `.env`, keep that file private. Do not put secrets in `VITE_` variables or paste credentials into chat. Development expects server port 3001 because the Vite proxy uses it.
 
-The form accepts a basic GitHub repository URL shape, supports Enter submission, and shows inline errors. Submitting a valid shape displays a Phase 1 notice. It sends no scan request. The server metadata endpoint described below is available separately. Snapshot/file/issue reads, scan results, and analyzers are future steps. AI has no implementation or runtime SDK and remains disabled regardless of environment keys. There is no public deployment.
+The form accepts a basic GitHub repository URL shape, supports Enter submission, and shows inline errors. Submitting a valid shape displays a Phase 1 notice. It sends no scan request. The server metadata and snapshot endpoints described below are available separately. File/issue reads, scan results, and analyzers are future steps. AI has no implementation or runtime SDK and remains disabled regardless of environment keys. There is no public deployment.
 
 ## Phase 1A metadata endpoint
 
@@ -33,6 +33,16 @@ Anonymous requests need no credentials. An optional root `.env` `GITHUB_TOKEN` i
 Errors return `{ error: { code, message, retryAt? }, requestId }`. Invalid input is 400, oversized JSON is 413, unsupported charset/encoding is 415, unavailable/private repository is 404, credential/permission/network/upstream errors are 502, and GitHub cooldown is 503. Upstream bodies, tokens, and stack traces are never returned. Cooldown timing is included when valid headers provide it.
 
 This slice uses a 10-second request timeout and 2 MiB streamed response cap, without retries, caching, or queueing. All redirects are rejected, including moved repositories; use their current canonical URL. `/api/analyze` and `/api/explain` remain unavailable. Automated tests inject fake GitHub responses and never call the live API.
+
+## Phase 1B snapshot endpoint
+
+`POST /api/repository/snapshot` accepts the same `{ repositoryUrl }` JSON and first fetches public canonical metadata. It resolves the actual default branch through the [commit endpoint](https://docs.github.com/en/rest/commits/commits#get-a-commit), encoding the entire branch as one parameter (including `/`). It fetches the [recursive Git tree](https://docs.github.com/en/rest/git/trees#get-a-tree) using the commit's exact tree SHA.
+
+Returns `{ schemaVersion: 1, repository, status: "ready", snapshot: { defaultBranch, commitSha, treeSha, tree: { entries, truncated, complete } } }`. Entries retain `path`, `type`, `mode`, `sha`, and optional `size`; response URLs and other fields are discarded. Path case stays exact. `truncated: true` always means `complete: false`; absent paths in that response cannot prove a file is missing. No missing-path analysis is implemented.
+
+When GitHub confirms an empty repository via a commit 409 and its known empty-repository message, the endpoint returns HTTP 200 with metadata, `status: "empty"`, `snapshot: null`, and a readable message. Other commit failures (including an unavailable branch 404 or an unrelated 409) return safe errors, rather than falsely claiming emptiness. Tree lookup failure is also a safe error with no usable coverage claim. Existing auth/cooldown handling applies at each stage.
+
+This chain makes at most three requests, with no retries or response URL following. The tree has a 10 MiB streamed input cap; other responses retain 2 MiB. Each request has a 10-second timeout. Snapshot JSON exceeding the spec's 3 MiB browser-response cap is rejected with a readable error, never silently truncated and marked complete. File contents, issues, file selection, queue/cache, and full scan reliability remain later steps.
 
 ## Verification
 

@@ -1,18 +1,27 @@
 import { randomUUID } from 'node:crypto';
 import express, { type ErrorRequestHandler } from 'express';
-import type { RepositoryErrorResponse, RepositoryMetadataResponse } from '@docscout/shared';
+import type { RepositoryErrorResponse, RepositoryMetadataResponse, RepositorySnapshotResponse } from '@docscout/shared';
 import { ApplicationError } from '../errors.js';
 import { GitHubClient } from '../github/client.js';
 import { parseRepositoryUrl } from '../security/repositoryUrl.js';
 
 export function repositoryRoute(github: GitHubClient) {
   const router = express.Router();
+  const readRepositoryUrl = (body: unknown) => body !== null && typeof body === 'object' && !Array.isArray(body)
+    ? (body as Record<string, unknown>).repositoryUrl : undefined;
   router.post('/', express.json({ limit: '4kb', strict: false }), async (req, res) => {
     const body: unknown = req.body;
-    const repositoryUrl = body !== null && typeof body === 'object' && !Array.isArray(body)
-      ? (body as Record<string, unknown>).repositoryUrl : undefined;
-    const repository = await github.getRepository(parseRepositoryUrl(repositoryUrl));
+    const repository = await github.getRepository(parseRepositoryUrl(readRepositoryUrl(body)));
     const result: RepositoryMetadataResponse = { schemaVersion: 1, repository };
+    res.json(result);
+  });
+  router.post('/snapshot', express.json({ limit: '4kb', strict: false }), async (req, res) => {
+    const repository = await github.getRepository(parseRepositoryUrl(readRepositoryUrl(req.body)));
+    const snapshot = await github.getSnapshot(repository);
+    const result: RepositorySnapshotResponse = { schemaVersion: 1, repository, ...snapshot };
+    if (Buffer.byteLength(JSON.stringify(result), 'utf8') > 3 * 1024 * 1024) {
+      throw new ApplicationError(502, 'TREE_LOOKUP_FAILED', 'The repository tree is too large to return safely. Path coverage is unavailable.');
+    }
     res.json(result);
   });
   const errors: ErrorRequestHandler = (error: unknown, _req, res, _next) => {

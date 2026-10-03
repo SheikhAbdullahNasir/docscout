@@ -7,7 +7,8 @@ Approved source: `PROJECT_SPEC.md` version 1.0. Updated October 3, 2026.
 - [x] Phase 0 — local workspace, scripts, blank environment example, basic URL form, health endpoint; acceptance gate passed.
 - [ ] Phase 1 — GitHub foundation and independent server URL validation.
   - [x] Phase 1A — strict server URL validation and public repository metadata only.
-  - [ ] Remaining Phase 1 — pinned commit/tree/files, guidance, labeled issues, and browser integration.
+  - [x] Phase 1B — default-branch commit snapshot and bounded recursive tree.
+  - [ ] Remaining Phase 1 — selected files, guidance, labeled issues, and browser integration.
 - [ ] Phase 2 — evidence-backed core analyzers.
 - [ ] Phase 3 — usable results and complete UI states.
 - [ ] Phase 4 — reliable core, security limits, fixtures, and CI.
@@ -77,6 +78,34 @@ Tests use fake Responses/transports only: URL matrix; headers/token presence/abs
 
 Independent review found no blockers. Its minor parser-error finding was reproduced with two failing tests: unsupported JSON charset/encoding returned 502. Mapped these cases to safe 415 input errors, verified both tests pass, and reran lint/typecheck/tests/build/production smoke. Staged source/files were reviewed for scope, whitespace, secrets, and generated artifacts. Implementation commit `3eb2d67` (`feat: add Phase 1A public repository metadata foundation`) was successfully pushed to origin/main on October 3, 2026, preserving history without force. A documentation follow-up records the outcome. The browser intentionally retains its setup preview until the remaining Phase 1 flow can produce real results.
 
+## Phase 1B — pinned snapshot and tree (October 3, 2026)
+
+- Extended the existing GitHubClient with getSnapshot(publicMetadata). One private bounded JSON request method now shares required headers, optional token, fixed host, redirect refusal, timeouts, and safe errors across metadata/commit/tree requests. No competing access layer or dependency changes.
+- Revalidated canonical public metadata and branch syntax before lookup. Encoded the actual default branch as one ref parameter; no main/master assumption. Validated commit SHA and commit.tree.sha as exact 40-character hexadecimal Git object IDs, then requested only `/git/trees/{treeSha}?recursive=1`.
+- Added typed tree entries with exact-case path, object type, Git mode, SHA, and optional size. Modes preserve enough information to distinguish regular/executable files, symlinks, directories, and submodules later. Unsafe/malformed/duplicate paths, invalid type/mode/size/SHA, mismatched returned tree SHA, or missing truncation flags fail closed. Response URLs and extra fields are never requested or retained.
+- Added typed ready/empty snapshot results. `truncated: true` implies incomplete path coverage. No absence-based findings, file selection, file-content downloads, or issue requests are implemented.
+- Added `/api/repository/snapshot` while preserving metadata-only `/api/repository`, health, setup form, and unavailable analyze/explain endpoints. Both use the existing JSON body limit and error middleware.
+- Confirmed commit empty-repository 409 yields HTTP 200, metadata, status empty, and null snapshot, with no tree request. An unrelated conflict, branch 404, or malformed commit is a safe commit error; tree failures are safe tree errors. Inherited auth/cooldown/network errors remain available at both stages. Raw upstream error text is never exposed.
+- Kept 10-second per-request timeout and 2 MiB other-response cap; used spec's 10 MiB streamed tree cap and 3 MiB snapshot response cap. Oversize output is rejected rather than silently cutting complete evidence. No queue/cache/retry/persistence layer added. Official commit/tree endpoint docs were rechecked.
+
+### Phase 1B verification
+
+| Command/check | Actual result |
+|---|---|
+| `npm run lint` | Passed |
+| `npm run typecheck` | Passed across all workspaces |
+| `npm test` | Passed: 143 tests across 6 suites; 50 new tests and all 93 previous tests |
+| `npm run build` | Passed: frontend and server |
+| `npm run test:production` | Passed: health, HTML, JS/CSS assets, unknown API 404 |
+| `npm run test:e2e` | Passed: all 3 existing browser regressions |
+| Bounded anonymous live metadata → commit → tree | Passed: octocat/Hello-World, exactly 3 requests |
+
+Live evidence: branch `master`; commit `7fd1a60b01f91b314f59955a4e4d4e80d8edf11d`; tree `b4eecafa9be2f2006ce1b709d6857b07069b4608`; 1 tree entry, truncated false, complete true. Used the compiled client, no token, no contents/issues calls. Live access is not part of automated tests.
+
+Offline tests cover main/non-main/slash/special-character branches, canonical request order, headers and fixed targets, SHA extraction/validation, regular and truncated trees, exact case and modes, empty repositories, unrelated conflict/404 failures, commit/tree auth/permission/cooldown/network/redirect errors, malformed evidence, duplicate paths, streamed size limits, oversized output, private metadata, invalid request admission, and safe error serialization. Initial new tests failed because getSnapshot was missing. Follow-up checks caught a branch error classification mismatch and unnecessary regex escape; fixed both and reran all checks successfully. Existing Playwright color-environment warnings remain harmless.
+
+Independent review found no blockers or important issues. No skipped or blocked verification. This slice is verified and ready for the existing commit/push checkpoint; Phase 1 remains incomplete.
+
 ## Remaining work
 
-Stop after Phase 1A. Next intended step: use canonical public metadata to resolve `default_branch` to its commit SHA and tree SHA, with offline fixtures for slash-containing branch names and empty repositories. Do not fetch commits/trees/files/issues in this task. README/guidance/issues and browser result wiring remain future Phase 1 steps; analyzers, result UI, full reliability budgets, queue/cache/retries, CI, and Phase 6 reports remain deferred. AI stays disabled; no live scan, billable AI call, cloning, repository code execution, or public deployment was performed. Continue to update progress, run relevant checks, and commit/push after each authorized completed slice.
+Stop after Phase 1B. Next intended step: deterministic selection of supported README, repository-local CONTRIBUTING, root manifest, and bounded docs paths, then fetch selected small text files at the pinned commit SHA with offline fixtures. Do not select/fetch file contents or issues in this task. Labeled issues and browser result integration remain later Phase 1 work; analyzers, result UI, full reliability budgets, queue/cache/retries, CI, and Phase 6 reports remain deferred. AI stays disabled; no billable AI call, cloning, repository code execution, or public deployment occurred. Continue to update progress, run relevant checks, and commit/push after each authorized completed slice.

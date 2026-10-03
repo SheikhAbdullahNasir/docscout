@@ -1,15 +1,17 @@
-import type { PublicRepositoryMetadata } from '@docscout/shared';
+import type { PublicRepositoryMetadata, RepositorySnapshotResult } from '@docscout/shared';
 import { ApplicationError } from '../errors.js';
 import { validOwner, validRepo, type ValidatedRepository } from '../security/repositoryUrl.js';
+import { commitSnapshot, recursiveTree, validBranch } from './snapshot.js';
 
 const API_BASE = 'https://api.github.com';
 const RESPONSE_LIMIT = 2 * 1024 * 1024;
+const EMPTY_REPOSITORY = Symbol('empty-repository');
 
 function upstreamError(message = 'GitHub returned an unavailable or invalid response. Please try again later.') {
   return new ApplicationError(502, 'GITHUB_UPSTREAM_FAILURE', message);
 }
 
-async function boundedJson(response: Response): Promise<unknown> {
+async function boundedJson(response: Response, limit = RESPONSE_LIMIT): Promise<unknown> {
   if (!response.body) throw upstreamError();
   const reader = response.body.getReader();
   const chunks: Uint8Array[] = [];
@@ -19,7 +21,7 @@ async function boundedJson(response: Response): Promise<unknown> {
       const { done, value } = await reader.read();
       if (done) break;
       size += value.byteLength;
-      if (size > RESPONSE_LIMIT) throw upstreamError();
+      if (size > limit) throw upstreamError();
       chunks.push(value);
     }
     return JSON.parse(Buffer.concat(chunks).toString('utf8')) as unknown;
@@ -78,6 +80,25 @@ export class GitHubClient {
     if (!validOwner(repository.owner) || !validRepo(repository.repo)) {
       throw new ApplicationError(400, 'INVALID_REPOSITORY_URL', 'Enter https://github.com/owner/repo.');
     }
+    return publicMetadata(await this.requestJson(`/repos/${encodeURIComponent(repository.owner)}/${encodeURIComponent(repository.repo)}`));
+  }
+
+  async getSnapshot(metadata: PublicRepositoryMetadata): Promise<RepositorySnapshotResult> {
+    // Revalidate runtime callers as well as response data. No response URL is a request target.
+    if (typeof metadata.defaultBranch !== 'string' || !validBranch(metadata.defaultBranch)) {
+      throw new ApplicationError(502, 'COMMIT_LOOKUP_FAILED', 'GitHub returned an unsupported default branch. Snapshot lookup is unavailable.');
+    }
+    const repository = publicMetadata({ owner: { login: metadata.owner }, name: metadata.name,
+      html_url: metadata.url, private: metadata.private, archived: metadata.archived, default_branch: metadata.defaultBranch });
+    const prefix = `/repos/${encodeURIComponent(repository.owner)}/${encodeURIComponent(repository.name)}`;
+    const value = await this.requestJson(`${prefix}/commits/${encodeURIComponent(repository.defaultBranch)}`, { stage: 'commit' });
+    if (value === EMPTY_REPOSITORY) return { status: 'empty', snapshot: null, message: 'This repository has no commit snapshot or files to scan yet.' };
+    const { commitSha, treeSha } = commitSnapshot(value);
+    const tree = recursiveTree(await this.requestJson(`${prefix}/git/trees/${treeSha}?recursive=1`, { stage: 'tree', limit: 10 * 1024 * 1024 }), treeSha);
+    return { status: 'ready', snapshot: { defaultBranch: repository.defaultBranch, commitSha, treeSha, tree } };
+  }
+
+  private async requestJson(path: string, options: { stage?: 'commit' | 'tree'; limit?: number } = {}): Promise<unknown> {
     const headers: Record<string, string> = {
       Accept: 'application/vnd.github+json',
       'X-GitHub-Api-Version': '2026-03-10',
@@ -86,10 +107,17 @@ export class GitHubClient {
     if (this.token) headers.Authorization = `Bearer ${this.token}`;
     try {
       const response = await this.fetcher(
-        `${API_BASE}/repos/${encodeURIComponent(repository.owner)}/${encodeURIComponent(repository.repo)}`,
+        `${API_BASE}${path}`,
         { method: 'GET', headers, redirect: 'manual', signal: AbortSignal.timeout(10_000) },
       );
-      if (response.status === 200) return publicMetadata(await boundedJson(response));
+      if (response.status === 200) return await boundedJson(response, options.limit);
+      if (response.status === 409 && options.stage === 'commit') {
+        try {
+          const message = record(await boundedJson(response))?.message;
+          if (typeof message === 'string' && /^Git Repository is empty\.?$/i.test(message)) return EMPTY_REPOSITORY;
+        } catch { /* Unconfirmed conflicts remain commit failures. */ }
+        throw new ApplicationError(502, 'COMMIT_LOOKUP_FAILED', 'The default branch commit could not be resolved. Please check the repository and retry.');
+      }
       // Do not follow redirects, including GitHub repository-renaming redirects.
       // Every status consumes/cancels its body; errors never copy upstream messages.
       let limited = response.status === 429 || response.headers.get('x-ratelimit-remaining') === '0'
@@ -102,7 +130,7 @@ export class GitHubClient {
       } else {
         await response.body?.cancel();
       }
-      if (response.status === 404) {
+      if (response.status === 404 && !options.stage) {
         throw new ApplicationError(404, 'REPOSITORY_UNAVAILABLE', 'Repository unavailable. Check the URL; it may be private or missing.');
       }
       if (response.status === 401) {
@@ -113,6 +141,11 @@ export class GitHubClient {
       }
       if (response.status === 403) {
         throw new ApplicationError(502, 'GITHUB_FORBIDDEN', 'GitHub denied this request. Check repository availability and server token permissions.');
+      }
+      if (options.stage) {
+        throw new ApplicationError(502, options.stage === 'commit' ? 'COMMIT_LOOKUP_FAILED' : 'TREE_LOOKUP_FAILED',
+          options.stage === 'commit' ? 'The default branch commit could not be resolved. Please check the repository and retry.'
+            : 'The pinned repository tree could not be retrieved. Path coverage is unavailable.');
       }
       throw upstreamError();
     } catch (error) {
