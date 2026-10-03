@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 
-test('health proxy and keyboard form work without analysis or AI requests', async ({ page, request }) => {
+test('health proxy and keyboard validation work without repository or AI requests', async ({ page, request }) => {
   expect((await request.get('/api/health')).status()).toBe(200);
   const outbound: string[] = [];
   page.on('request', (req) => outbound.push(req.url()));
@@ -9,11 +9,8 @@ test('health proxy and keyboard form work without analysis or AI requests', asyn
   await input.fill('https://example.com/owner/repo');
   await input.press('Enter');
   await expect(page.getByRole('alert')).toContainText('https://github.com/owner/repo');
-  await input.fill('https://github.com/owner/repo');
-  await input.press('Enter');
-  await expect(page.getByRole('status')).toContainText('Repository scanning arrives in Phase 1');
   expect(outbound.every((url) => url.startsWith('http://127.0.0.1:5173/'))).toBe(true);
-  expect(outbound.some((url) => /\/api\/(analyze|explain)/.test(url))).toBe(false);
+  expect(outbound.some((url) => /\/api\/(repository|analyze|explain)/.test(url))).toBe(false);
 });
 
 for (const width of [360, 1280]) {
