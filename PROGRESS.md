@@ -13,6 +13,7 @@ Approved source: `PROJECT_SPEC.md` version 1.0. Updated October 4, 2026.
   - [x] Phase 1E — minimal browser integration for repository metadata, pinned documents, labeled issues, and truthful states.
 - [x] Phase 2 — evidence-backed core analyzers; completion gate passed October 5, 2026.
 - [ ] Phase 3 — usable results and complete UI states.
+  - [x] Phase 3A — beginner-readable typed finding sections and cards.
 - [ ] Phase 4 — reliable core, security limits, fixtures, and CI.
 - [ ] Phase 5 — optional AI; not requested, disabled.
 - [ ] Phase 6 — release readiness and real-repository validation.
@@ -309,7 +310,11 @@ The first combined sandboxed Vitest runs encountered the known transient Windows
 
 ## Remaining work
 
-Stop after this verified Phase 2C checkpoint. The recommended next step is a separately scoped Phase 3 task for deterministic result presentation using the existing typed findings and coverage. Do not begin presentation redesign, filters, copy-next-steps UI, AI explanation, difficulty estimation, external-link or heading-anchor validation, cloning, repository execution, GitHub writes, databases, or background application agents without a new task. AI remains disabled and no billable AI call occurred.
+Phase 3A now presents the existing typed findings in separate documentation and labeled-issue sections, with documentation first. Cards show title, confidence, unknown difficulty, server-provided source/evidence, why the finding matters, manual verification steps, and limitations; labeled-issue cards retain maintainer labels and assignment state. Empty finding sections describe only what the available checked evidence produced. Repository excerpts remain plain text and links remain limited to server-provided source URLs.
+
+Focused browser verification passed all 12 tests in `tests/e2e/phase1.spec.ts`, including documentation/issue separation, required card details, section order, plain-text evidence, and truthful no-findings states. `npm run typecheck` passed across all three workspaces and `npm run lint` passed. The first sandboxed Playwright attempt stalled because Windows denied loopback access; the unchanged focused run passed with the permitted elevated localhost execution mode. Playwright emitted the existing harmless `NO_COLOR`/`FORCE_COLOR` warnings.
+
+Stop after this verified Phase 3A checkpoint. The recommended next step is a separately scoped Phase 3B task. Filters, copy-next-steps UI, whole-page redesign, Phase 4 reliability work, and AI remain unimplemented.
 
 ## Phase 2 completion gate (October 5, 2026)
 

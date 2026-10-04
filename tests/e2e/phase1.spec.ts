@@ -47,7 +47,26 @@ const issues = {
 
 const analysis = {
   markdownLinks: {
-    findings: [],
+    findings: [{
+      id: 'missing-local-target:1234567890abcdef',
+      type: 'missing-local-target' as const,
+      title: 'README link target is missing',
+      observation: 'Target is absent from the scanned repository snapshot.' as const,
+      confidence: 'high' as const,
+      difficulty: 'unknown' as const,
+      evidence: {
+        sourceDocumentPath: 'README.md',
+        sourceUrl: `https://github.com/Canonical/Repo/blob/${commitSha}/README.md#L12`,
+        sourceLine: 12,
+        excerpt: 'Read the <script>alert("unsafe")</script> setup guide.',
+        linkText: 'setup guide',
+        originalTarget: 'docs/setup.md',
+        normalizedTarget: 'docs/setup.md',
+      },
+      whyItMatters: 'A newcomer following the README can reach a dead end.',
+      verificationSteps: ['Open the pinned README source and confirm the link target.'],
+      limitations: ['Only the pinned repository snapshot was checked.'],
+    }],
     coverage: {
       documentsAnalyzed: 0,
       documentsUnchecked: 0,
@@ -71,7 +90,25 @@ const analysis = {
     },
   },
   npmScripts: {
-    findings: [],
+    findings: [{
+      id: 'possible-missing-npm-script:1234567890abcdef',
+      type: 'possible-missing-npm-script' as const,
+      title: 'README command may reference a missing npm script',
+      confidence: 'needs-review' as const,
+      difficulty: 'unknown' as const,
+      evidence: {
+        sourceDocumentPath: 'README.md',
+        sourceUrl: `https://github.com/Canonical/Repo/blob/${commitSha}/README.md#L24`,
+        sourceLine: 24,
+        excerpt: 'npm run check-docs',
+        command: 'npm run check-docs',
+        script: 'check-docs',
+        manifestPath: 'package.json' as const,
+      },
+      whyItMatters: 'A documented setup command may not work from the repository root.',
+      verificationSteps: ['Inspect package.json and the surrounding README instructions.'],
+      limitations: ['Workspace and maintainer intent still need manual review.'],
+    }],
     coverage: {
       status: 'skipped' as const,
       skipReason: 'manifest-unavailable' as const,
@@ -249,14 +286,74 @@ test('displays the typed Phase 1 snapshot safely with archived and partial cover
   await expect(page.locator('.document-preview').first()).toContainText('<img src="https://tracker.invalid/pixel.png">');
   await expect(page.getByRole('heading', { name: 'Contribution guidance' })).toBeVisible();
   await expect(page.getByText('.github/CONTRIBUTING.md', { exact: true })).toBeVisible();
-  await expect(page.getByRole('heading', { name: '#42 Clarify setup notes' })).toBeVisible();
-  await expect(page.getByText('good first issue', { exact: true })).toBeVisible();
-  await expect(page.getByText('Assigned to maintainer')).toBeVisible();
+  const labeledIssues = page.getByRole('region', { name: 'Labeled issues' });
+  await expect(labeledIssues.getByRole('heading', { name: '#42 Clarify setup notes' })).toBeVisible();
+  await expect(labeledIssues.getByText('good first issue', { exact: true })).toBeVisible();
+  await expect(labeledIssues.getByText('Assigned to maintainer')).toBeVisible();
   await expect(page.getByText('Repository path coverage is incomplete.', { exact: true })).toBeVisible();
   await expect(page.getByText('Issue results sampled because another page was available after the two-page limit.')).toBeVisible();
   await expect(page.getByText('Issue coverage for this label is unavailable because GitHub could not complete the request.')).toBeVisible();
   await expect(page.locator('img')).toHaveCount(0);
   expect(remoteRequests).toEqual([]);
+});
+
+test('displays documentation findings before labeled issue opportunities with actionable details', async ({ page }) => {
+  await page.route('**/api/repository/snapshot', (route) => route.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify(successResponse),
+  }));
+  await page.goto('/');
+  await submit(page);
+
+  const documentation = page.getByRole('region', { name: 'Documentation findings' });
+  const opportunities = page.getByRole('region', { name: 'Labeled issue opportunities' });
+  await expect(documentation.getByRole('heading', { name: 'README link target is missing' })).toBeVisible();
+  await expect(documentation.getByRole('heading', { name: 'README command may reference a missing npm script' })).toBeVisible();
+  await expect(documentation.getByText('Confidence: high')).toBeVisible();
+  await expect(documentation.getByText('Difficulty: unknown').first()).toBeVisible();
+  await expect(documentation.getByText('Read the <script>alert("unsafe")</script> setup guide.')).toBeVisible();
+  await expect(documentation.getByText('A newcomer following the README can reach a dead end.')).toBeVisible();
+  await expect(documentation.getByText('Open the pinned README source and confirm the link target.')).toBeVisible();
+  await expect(documentation.getByText('Only the pinned repository snapshot was checked.')).toBeVisible();
+  await expect(documentation.locator('script')).toHaveCount(0);
+
+  await expect(opportunities.getByRole('heading', { name: 'Maintainer-labeled good first issue' })).toBeVisible();
+  await expect(opportunities.getByText('good first issue', { exact: true })).toBeVisible();
+  await expect(opportunities.getByText('Assigned to maintainer')).toBeVisible();
+  await expect(opportunities.getByText('Open the issue and read the latest discussion.')).toBeVisible();
+
+  const sectionOrder = await page.locator('.findings-section').evaluateAll((sections) => sections.map((section) => section.textContent));
+  expect(sectionOrder[0]).toContain('Documentation findings');
+  expect(sectionOrder[1]).toContain('Labeled issue opportunities');
+});
+
+test('keeps the no-findings state truthful when the typed aggregate contains no findings', async ({ page }) => {
+  const noFindingsResponse = {
+    ...emptyResponse,
+    snapshot: {
+      ...emptyResponse.snapshot,
+      analysis: {
+        ...emptyResponse.snapshot.analysis,
+        findings: [],
+        coverage: {
+          documentationFindingsProduced: 0,
+          documentationFindingsOmitted: 0,
+          issueFindingsProduced: 0,
+        },
+      },
+    },
+  };
+  await page.route('**/api/repository/snapshot', (route) => route.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify(noFindingsResponse),
+  }));
+  await page.goto('/');
+  await submit(page);
+
+  await expect(page.getByText('No documentation findings were produced from the available checked evidence.')).toBeVisible();
+  await expect(page.getByText('No labeled issue opportunities were produced from the available supported-label evidence.')).toBeVisible();
 });
 
 test('shows narrow README, contribution-guidance, and supported-issue empty states', async ({ page }) => {

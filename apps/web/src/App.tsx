@@ -1,5 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import type {
+  Finding,
+  LabeledIssueFinding,
   RepositoryDocumentState,
   RepositoryErrorResponse,
   RepositoryIssue,
@@ -242,6 +244,86 @@ function Issues({ issues }: { issues: RepositoryIssues }) {
   );
 }
 
+function FindingEvidence({ finding }: { finding: Finding }) {
+  if (finding.type === 'labeled-issue') {
+    const evidence = finding.evidence;
+    return (
+      <>
+        <p><a href={evidence.sourceUrl} target="_blank" rel="noreferrer">View issue source on GitHub</a></p>
+        <p>Issue #{evidence.issueNumber}: {evidence.issueTitle}</p>
+        <div className="labels" aria-label="Maintainer-provided labels">
+          {evidence.labels.map((label) => <span key={label}>{label}</span>)}
+        </div>
+        <p className="issue-meta">
+          {evidence.assigned ? `Assigned to ${evidence.assignees.join(', ')}` : 'Unassigned'}
+        </p>
+        {evidence.excerpt && <p className="issue-excerpt">{evidence.excerpt}</p>}
+      </>
+    );
+  }
+
+  const evidence = finding.evidence;
+  return (
+    <>
+      <p><a href={evidence.sourceUrl} target="_blank" rel="noreferrer">View pinned evidence on GitHub</a></p>
+      <p>{evidence.sourceDocumentPath}, line {evidence.sourceLine}</p>
+      <pre className="document-preview">{evidence.excerpt}</pre>
+      {finding.type === 'missing-local-target' ? (
+        <p>Referenced target: <code>{finding.evidence.originalTarget}</code></p>
+      ) : (
+        <p>Command: <code>{finding.evidence.command}</code> · Script: <code>{finding.evidence.script}</code></p>
+      )}
+    </>
+  );
+}
+
+function FindingCard({ finding }: { finding: Finding }) {
+  return (
+    <article className="issue finding-card">
+      <h3>{finding.title}</h3>
+      <p className="issue-meta">Confidence: {finding.confidence} · Difficulty: {finding.difficulty}</p>
+      <h4>Evidence and source</h4>
+      <FindingEvidence finding={finding} />
+      <h4>Why it matters</h4>
+      <p>{finding.whyItMatters}</p>
+      <h4>Verification and next steps</h4>
+      <ul>{finding.verificationSteps.map((step) => <li key={step}>{step}</li>)}</ul>
+      <h4>Limitations</h4>
+      <ul>{finding.limitations.map((limitation) => <li key={limitation}>{limitation}</li>)}</ul>
+    </article>
+  );
+}
+
+function Findings({ findings }: { findings: Finding[] }) {
+  const documentationFindings = findings.filter((finding) => finding.type !== 'labeled-issue');
+  const issueFindings = findings.filter((finding): finding is LabeledIssueFinding => finding.type === 'labeled-issue');
+  return (
+    <>
+      <section className="result-section findings-section" aria-labelledby="documentation-findings-heading">
+        <h2 id="documentation-findings-heading">Documentation findings</h2>
+        {documentationFindings.length > 0 ? (
+          <div className="issue-list">
+            {documentationFindings.map((finding) => <FindingCard key={finding.id} finding={finding} />)}
+          </div>
+        ) : (
+          <p>No documentation findings were produced from the available checked evidence.</p>
+        )}
+      </section>
+      <section className="result-section findings-section" aria-labelledby="issue-findings-heading">
+        <h2 id="issue-findings-heading">Labeled issue opportunities</h2>
+        <p className="section-note">Maintainer labels are evidence of a possible opportunity, not a DocScout difficulty estimate.</p>
+        {issueFindings.length > 0 ? (
+          <div className="issue-list">
+            {issueFindings.map((finding) => <FindingCard key={finding.id} finding={finding} />)}
+          </div>
+        ) : (
+          <p>No labeled issue opportunities were produced from the available supported-label evidence.</p>
+        )}
+      </section>
+    </>
+  );
+}
+
 function Coverage({ result }: { result: RepositorySnapshotResponse }) {
   const messages: Array<{ key: string; text: string }> = [];
   if (result.status === 'ready') {
@@ -278,6 +360,7 @@ function Coverage({ result }: { result: RepositorySnapshotResponse }) {
 function Results({ result }: { result: RepositorySnapshotResponse }) {
   const contributionCandidateSkipped = result.status === 'ready'
     && result.snapshot.documents.skipped.some((skip) => skip.category === 'contributing');
+  const findings = result.status === 'ready' ? result.snapshot.analysis.findings : result.analysis.findings;
   return (
     <div className="results">
       <p role="status" className="visually-hidden">Repository analysis complete.</p>
@@ -312,6 +395,7 @@ function Results({ result }: { result: RepositorySnapshotResponse }) {
           <p>No document snapshot is available because this repository has no commit to scan.</p>
         </section>
       )}
+      <Findings findings={findings} />
       <Issues issues={result.issues} />
       <Coverage result={result} />
     </div>
