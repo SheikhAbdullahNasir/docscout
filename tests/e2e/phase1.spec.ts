@@ -68,14 +68,14 @@ const analysis = {
       limitations: ['Only the pinned repository snapshot was checked.'],
     }],
     coverage: {
-      documentsAnalyzed: 0,
-      documentsUnchecked: 0,
-      supportedLinksChecked: 0,
-      uncheckedLinks: 0,
-      unsupportedLinks: 0,
+      documentsAnalyzed: 1,
+      documentsUnchecked: 1,
+      supportedLinksChecked: 4,
+      uncheckedLinks: 2,
+      unsupportedLinks: 3,
       findingsProduced: 0,
       findingsOmitted: 0,
-      uncheckedByReason: { incompleteTree: 0, unresolvedReference: 0, fragmentAnchor: 0 },
+      uncheckedByReason: { incompleteTree: 2, unresolvedReference: 0, fragmentAnchor: 0 },
       uncheckedDocumentsByReason: { parserSafetyLimit: 0 },
       unsupportedByReason: {
         images: 0,
@@ -150,9 +150,9 @@ const analysis = {
       limitations: ['Issue retrieval was sampled, so these findings may not cover all possible maintainer-labeled opportunities.'],
     }],
     coverage: {
-      eligibleIssues: 1,
+      eligibleIssues: 3,
       findingsProduced: 1,
-      findingsOmitted: 0,
+      findingsOmitted: 1,
       issueRetrieval: issues.coverage,
       limitations: ['Issue retrieval was sampled, so these findings may not cover all possible maintainer-labeled opportunities.'],
     },
@@ -160,7 +160,7 @@ const analysis = {
   findings: [] as Array<Record<string, unknown>>,
   coverage: {
     documentationFindingsProduced: 0,
-    documentationFindingsOmitted: 0,
+    documentationFindingsOmitted: 2,
     issueFindingsProduced: 1,
   },
 };
@@ -290,7 +290,7 @@ test('displays the typed Phase 1 snapshot safely with archived and partial cover
   await expect(labeledIssues.getByRole('heading', { name: '#42 Clarify setup notes' })).toBeVisible();
   await expect(labeledIssues.getByText('good first issue', { exact: true })).toBeVisible();
   await expect(labeledIssues.getByText('Assigned to maintainer')).toBeVisible();
-  await expect(page.getByText('Repository path coverage is incomplete.', { exact: true })).toBeVisible();
+  await expect(page.getByText('Repository tree: incomplete because GitHub returned a truncated tree.', { exact: true })).toBeVisible();
   await expect(page.getByText('Issue results sampled because another page was available after the two-page limit.')).toBeVisible();
   await expect(page.getByText('Issue coverage for this label is unavailable because GitHub could not complete the request.')).toBeVisible();
   await expect(page.locator('img')).toHaveCount(0);
@@ -328,6 +328,111 @@ test('displays documentation findings before labeled issue opportunities with ac
   expect(sectionOrder[1]).toContain('Labeled issue opportunities');
 });
 
+test('shows complete checked coverage without implying unavailable documents were scanned', async ({ page }) => {
+  const completeCoverageResponse = {
+    ...emptyResponse,
+    snapshot: {
+      ...emptyResponse.snapshot,
+      analysis: {
+        ...emptyResponse.snapshot.analysis,
+        markdownLinks: {
+          ...emptyResponse.snapshot.analysis.markdownLinks,
+          coverage: {
+            ...emptyResponse.snapshot.analysis.markdownLinks.coverage,
+            documentsAnalyzed: 0,
+            documentsUnchecked: 0,
+            supportedLinksChecked: 0,
+            uncheckedLinks: 0,
+            unsupportedLinks: 0,
+            uncheckedByReason: { incompleteTree: 0, unresolvedReference: 0, fragmentAnchor: 0 },
+          },
+        },
+        npmScripts: {
+          ...emptyResponse.snapshot.analysis.npmScripts,
+          findings: [],
+          coverage: {
+            ...emptyResponse.snapshot.analysis.npmScripts.coverage,
+            status: 'checked' as const,
+            skipReason: undefined,
+          },
+        },
+        labeledIssues: {
+          findings: [],
+          coverage: {
+            eligibleIssues: 0,
+            findingsProduced: 0,
+            findingsOmitted: 0,
+            issueRetrieval: emptyResponse.issues.coverage,
+            limitations: [],
+          },
+        },
+        findings: [],
+        coverage: {
+          documentationFindingsProduced: 0,
+          documentationFindingsOmitted: 0,
+          issueFindingsProduced: 0,
+        },
+      },
+    },
+  };
+  let responseBody: unknown = completeCoverageResponse;
+  await page.route('**/api/repository/snapshot', (route) => route.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify(responseBody),
+  }));
+  await page.goto('/');
+  await submit(page);
+
+  const coverage = page.getByRole('region', { name: 'Coverage and scan status' });
+  await expect(coverage.getByText('Coverage complete for the available repository snapshot.')).toBeVisible();
+  await expect(coverage.getByText('Repository tree: complete.')).toBeVisible();
+  await expect(coverage.getByText('Document selection: complete.')).toBeVisible();
+  await expect(coverage.getByText('Selected documents available: 0.')).toBeVisible();
+  await expect(coverage.getByText('Selected documents skipped: 0.')).toBeVisible();
+  await expect(coverage.getByText('Local links: 0 checked, 0 unchecked, 0 unsupported.')).toBeVisible();
+  await expect(coverage.getByText('npm-script analysis: checked.')).toBeVisible();
+  await expect(coverage.getByText('Issue coverage: complete for both supported label queries.')).toBeVisible();
+
+  responseBody = {
+    ...completeCoverageResponse,
+    snapshot: {
+      ...completeCoverageResponse.snapshot,
+      documents: { ...completeCoverageResponse.snapshot.documents, omissions: ['docs-limit'] },
+    },
+  };
+  await page.reload();
+  await submit(page);
+
+  await expect(coverage.getByText('Partial coverage — useful checked evidence is shown below.')).toBeVisible();
+  await expect(coverage.getByText('Additional selected docs were omitted by the document limit.')).toBeVisible();
+});
+
+test('discloses incomplete, skipped, sampled, failed, and omitted coverage without hiding findings', async ({ page }) => {
+  await page.route('**/api/repository/snapshot', (route) => route.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify(successResponse),
+  }));
+  await page.goto('/');
+  await submit(page);
+
+  const coverage = page.getByRole('region', { name: 'Coverage and scan status' });
+  await expect(coverage.getByText('Partial coverage — useful checked evidence is shown below.')).toBeVisible();
+  await expect(coverage.getByText('Repository tree: incomplete because GitHub returned a truncated tree.')).toBeVisible();
+  await expect(coverage.getByText('Document selection: incomplete.')).toBeVisible();
+  await expect(coverage.getByText('Selected documents available: 2.')).toBeVisible();
+  await expect(coverage.getByText('Selected documents skipped: 1.')).toBeVisible();
+  await expect(coverage.getByText('Local links: 4 checked, 2 unchecked, 3 unsupported.')).toBeVisible();
+  await expect(coverage.getByText('npm-script analysis: skipped because the root package.json was unavailable.')).toBeVisible();
+  await expect(coverage.getByText('good first issue: complete after 2 pages; results were capped.')).toBeVisible();
+  await expect(coverage.getByText('help wanted: failed before any page was fetched.')).toBeVisible();
+  await expect(coverage.getByText('Documentation suggestions omitted by result limits: 2.')).toBeVisible();
+  await expect(coverage.getByText('Issue opportunities omitted by result limits: 1.')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'README link target is missing' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Maintainer-labeled good first issue' })).toBeVisible();
+});
+
 test('keeps the no-findings state truthful when the typed aggregate contains no findings', async ({ page }) => {
   const noFindingsResponse = {
     ...emptyResponse,
@@ -352,6 +457,7 @@ test('keeps the no-findings state truthful when the typed aggregate contains no 
   await page.goto('/');
   await submit(page);
 
+  await expect(page.getByText('No suggestions found in the checked scope.')).toBeVisible();
   await expect(page.getByText('No documentation findings were produced from the available checked evidence.')).toBeVisible();
   await expect(page.getByText('No labeled issue opportunities were produced from the available supported-label evidence.')).toBeVisible();
 });

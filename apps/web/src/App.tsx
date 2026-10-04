@@ -324,35 +324,104 @@ function Findings({ findings }: { findings: Finding[] }) {
   );
 }
 
+const npmSkipMessages = {
+  'readme-unavailable': 'the README was unavailable',
+  'manifest-unavailable': 'the root package.json was unavailable',
+  'manifest-invalid-json': 'the root package.json was not valid JSON',
+  'manifest-not-object': 'the root package.json was not a JSON object',
+  'scripts-missing': 'the root package.json had no scripts field',
+  'scripts-invalid': 'the root package.json scripts field was not usable',
+  'parser-safety-limit': 'the README exceeded the parser safety limit',
+} as const;
+
+function issueQuerySummary(query: RepositoryIssues['coverage']['queries'][number]): string {
+  if (query.pagesFetched === 0) return `${query.label}: ${query.status} before any page was fetched.`;
+  const pages = `${query.pagesFetched} page${query.pagesFetched === 1 ? '' : 's'}`;
+  return `${query.label}: ${query.status} after ${pages}${query.capped ? '; results were capped' : ''}.`;
+}
+
 function Coverage({ result }: { result: RepositorySnapshotResponse }) {
-  const messages: Array<{ key: string; text: string }> = [];
-  if (result.status === 'ready') {
-    if (!result.snapshot.tree.complete) messages.push({ key: 'tree', text: 'Repository path coverage is incomplete.' });
-    if (!result.snapshot.documents.selectionComplete) {
-      messages.push({ key: 'documents', text: 'Document selection may be incomplete because repository path coverage is incomplete.' });
-    }
-    if (result.snapshot.documents.skipped.length > 0) {
-      const count = result.snapshot.documents.skipped.length;
-      messages.push({ key: 'skipped', text: `${count} selected document${count === 1 ? '' : 's'} could not be displayed safely.` });
-    }
-    if (result.snapshot.documents.omissions.includes('docs-limit')) {
-      messages.push({ key: 'docs-limit', text: 'Additional docs results were limited to the bounded document selection.' });
-    }
-    if (result.snapshot.documents.omissions.includes('combined-content-limit')) {
-      messages.push({ key: 'content-limit', text: 'Selected document content reached the combined safe-content limit.' });
-    }
+  const findingsCoverage = result.status === 'ready'
+    ? result.snapshot.analysis.coverage : result.analysis.coverage;
+  const labeledIssueCoverage = result.status === 'ready'
+    ? result.snapshot.analysis.labeledIssues.coverage : result.analysis.labeledIssues.coverage;
+
+  if (result.status === 'empty') {
+    return (
+      <section className="coverage" aria-labelledby="coverage-heading">
+        <h2 id="coverage-heading">Coverage and scan status</h2>
+        <p className="notice">Partial coverage — no commit-backed repository snapshot was available.</p>
+        <p>Document and documentation-analyzer coverage was not available.</p>
+        <p>{result.issues.coverage.complete && !result.issues.coverage.sampled
+          ? 'Issue coverage: complete for both supported label queries.'
+          : 'Issue coverage was partial; only returned issue evidence is shown.'}</p>
+        <ul>
+          {result.issues.coverage.queries.map((query) => <li key={query.label}>{issueQuerySummary(query)}</li>)}
+          {labeledIssueCoverage.findingsOmitted > 0 && (
+            <li>Issue opportunities omitted by result limits: {labeledIssueCoverage.findingsOmitted}.</li>
+          )}
+        </ul>
+      </section>
+    );
   }
-  for (const query of result.issues.coverage.queries) {
-    if (query.message && (query.status !== 'complete' || query.capped)) {
-      messages.push({ key: `issues-${query.label}`, text: `${query.label}: ${query.message}` });
-    }
-  }
-  if (messages.length === 0) return null;
+
+  const { documents, tree, analysis } = result.snapshot;
+  const documentStates = [documents.readme, documents.contributing, documents.packageJson];
+  const availableDocuments = documentStates.filter((state) => state.status === 'available').length + documents.docs.length;
+  const unavailableDocuments = documentStates.filter((state) => state.status !== 'available').length;
+  const issueCoverageComplete = result.issues.coverage.complete && !result.issues.coverage.sampled;
+  const complete = tree.complete && documents.selectionComplete && documents.skipped.length === 0
+    && documents.omissions.length === 0
+    && analysis.markdownLinks.coverage.documentsUnchecked === 0
+    && analysis.markdownLinks.coverage.uncheckedLinks === 0
+    && analysis.npmScripts.coverage.status === 'checked' && issueCoverageComplete
+    && findingsCoverage.documentationFindingsOmitted === 0 && labeledIssueCoverage.findingsOmitted === 0;
+  const npmCoverage = analysis.npmScripts.coverage;
 
   return (
     <section className="coverage" aria-labelledby="coverage-heading">
-      <h2 id="coverage-heading">Coverage notes</h2>
-      <ul>{messages.map((message) => <li key={message.key}>{message.text}</li>)}</ul>
+      <h2 id="coverage-heading">Coverage and scan status</h2>
+      <p className={complete ? undefined : 'notice'}>
+        {complete
+          ? 'Coverage complete for the available repository snapshot.'
+          : 'Partial coverage — useful checked evidence is shown below.'}
+      </p>
+      <ul>
+        <li>{tree.complete
+          ? 'Repository tree: complete.'
+          : `Repository tree: incomplete${tree.truncated ? ' because GitHub returned a truncated tree' : ''}.`}</li>
+        <li>Document selection: {documents.selectionComplete ? 'complete' : 'incomplete'}.</li>
+        <li>Selected documents available: {availableDocuments}.</li>
+        <li>Selected documents unavailable or unknown: {unavailableDocuments}.</li>
+        <li>Selected documents skipped: {documents.skipped.length}.</li>
+        <li>Markdown documents: {analysis.markdownLinks.coverage.documentsAnalyzed} analyzed,{' '}
+          {analysis.markdownLinks.coverage.documentsUnchecked} unchecked.</li>
+        <li>Local links: {analysis.markdownLinks.coverage.supportedLinksChecked} checked,{' '}
+          {analysis.markdownLinks.coverage.uncheckedLinks} unchecked,{' '}
+          {analysis.markdownLinks.coverage.unsupportedLinks} unsupported.</li>
+        <li>{npmCoverage.status === 'checked'
+          ? 'npm-script analysis: checked.'
+          : `npm-script analysis: skipped because ${npmCoverage.skipReason
+            ? npmSkipMessages[npmCoverage.skipReason] : 'no skip reason was provided'}.`}</li>
+        <li>{issueCoverageComplete
+          ? 'Issue coverage: complete for both supported label queries.'
+          : 'Issue coverage: partial, sampled, capped, or unavailable for at least one supported label query.'}</li>
+        {result.issues.coverage.queries.map((query) => <li key={query.label}>{issueQuerySummary(query)}</li>)}
+        {documents.omissions.includes('docs-limit') && (
+          <li>Additional selected docs were omitted by the document limit.</li>
+        )}
+        {documents.omissions.includes('combined-content-limit') && (
+          <li>Selected document content was omitted after the combined content limit was reached.</li>
+        )}
+        {findingsCoverage.documentationFindingsOmitted > 0 && (
+          <li>Documentation suggestions omitted by result limits: {findingsCoverage.documentationFindingsOmitted}.</li>
+        )}
+        {labeledIssueCoverage.findingsOmitted > 0 && (
+          <li>Issue opportunities omitted by result limits: {labeledIssueCoverage.findingsOmitted}.</li>
+        )}
+        {result.issues.coverage.queries.map((query) => query.message
+          ? <li key={`${query.label}-message`}>{query.label}: {query.message}</li> : null)}
+      </ul>
     </section>
   );
 }
@@ -395,6 +464,7 @@ function Results({ result }: { result: RepositorySnapshotResponse }) {
           <p>No document snapshot is available because this repository has no commit to scan.</p>
         </section>
       )}
+      {findings.length === 0 && <p className="notice">No suggestions found in the checked scope.</p>}
       <Findings findings={findings} />
       <Issues issues={result.issues} />
       <Coverage result={result} />

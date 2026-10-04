@@ -14,6 +14,7 @@ Approved source: `PROJECT_SPEC.md` version 1.0. Updated October 4, 2026.
 - [x] Phase 2 — evidence-backed core analyzers; completion gate passed October 5, 2026.
 - [ ] Phase 3 — usable results and complete UI states.
   - [x] Phase 3A — beginner-readable typed finding sections and cards.
+  - [x] Phase 3B — beginner-readable coverage, partial, and empty-result presentation.
 - [ ] Phase 4 — reliable core, security limits, fixtures, and CI.
 - [ ] Phase 5 — optional AI; not requested, disabled.
 - [ ] Phase 6 — release readiness and real-repository validation.
@@ -312,9 +313,11 @@ The first combined sandboxed Vitest runs encountered the known transient Windows
 
 Phase 3A now presents the existing typed findings in separate documentation and labeled-issue sections, with documentation first. Cards show title, confidence, unknown difficulty, server-provided source/evidence, why the finding matters, manual verification steps, and limitations; labeled-issue cards retain maintainer labels and assignment state. Empty finding sections describe only what the available checked evidence produced. Repository excerpts remain plain text and links remain limited to server-provided source URLs.
 
-Focused browser verification passed all 12 tests in `tests/e2e/phase1.spec.ts`, including documentation/issue separation, required card details, section order, plain-text evidence, and truthful no-findings states. `npm run typecheck` passed across all three workspaces and `npm run lint` passed. The first sandboxed Playwright attempt stalled because Windows denied loopback access; the unchanged focused run passed with the permitted elevated localhost execution mode. Playwright emitted the existing harmless `NO_COLOR`/`FORCE_COLOR` warnings.
+Phase 3B adds an always-visible coverage and scan-status section driven only by existing typed snapshot/analyzer/issue coverage. It distinguishes complete and useful partial coverage; reports tree and document-selection completeness, available/unavailable/skipped selected documents, analyzed/unchecked Markdown and link counts, npm-script checked/skipped status and reason, per-label issue query status/pages/caps, document-content omissions, and documentation/issue result-limit omissions. Empty repositories retain issue coverage while explicitly stating that commit-backed document and analyzer coverage was unavailable. An empty aggregate finding list says only: “No suggestions found in the checked scope.”
 
-Stop after this verified Phase 3A checkpoint. The recommended next step is a separately scoped Phase 3B task. Filters, copy-next-steps UI, whole-page redesign, Phase 4 reliability work, and AI remain unimplemented.
+Focused browser verification passed all 14 tests in `tests/e2e/phase1.spec.ts`, including complete coverage, truncated/incomplete coverage, skipped npm-script analysis, sampled/capped/failed issue coverage, result omissions, truthful no-findings wording, and retained Phase 3A cards. `npm run typecheck` passed across all three workspaces, `npm run lint` passed, and `git diff --check` passed. Playwright required the permitted elevated localhost execution mode and emitted the existing harmless `NO_COLOR`/`FORCE_COLOR` warnings.
+
+Stop after this verified Phase 3B checkpoint. The recommended next step is a separately scoped Phase 3C task. Filters, copy-next-steps UI, whole-page redesign, Phase 4 reliability work, and AI remain unimplemented.
 
 ## Phase 2 completion gate (October 5, 2026)
 
