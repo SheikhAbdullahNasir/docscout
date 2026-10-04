@@ -36,7 +36,7 @@ dd { margin: 0; }
 .issue { border: 1px solid #cbd2c9; border-radius: 6px; background: white; padding: 16px; }
 .issue h3 { margin-top: 0; }
 .labels { display: flex; flex-wrap: wrap; gap: 6px; }
-.labels span { border: 1px solid #89978e; border-radius: 999px; padding: 2px 8px; font-size: 12px; }
+.labels span { min-width: 0; max-width: 100%; overflow-wrap: anywhere; border: 1px solid #89978e; border-radius: 999px; padding: 2px 8px; font-size: 12px; }
 .issue-excerpt { white-space: pre-wrap; }
 .coverage { background: #fff8eb; padding-top: 12px; padding-bottom: 12px; }
 .coverage h2 { margin-top: 0; }

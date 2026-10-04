@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Locator, type Page } from '@playwright/test';
 
 const commitSha = '1234567890abcdef1234567890abcdef12345678';
 
@@ -258,6 +258,36 @@ async function submit(page: Page) {
   await page.getByRole('button', { name: 'Analyze repository' }).click();
 }
 
+async function expectNoPageOverflow(page: Page) {
+  await expect.poll(() => page.evaluate(() => ({
+    body: document.body.scrollWidth <= document.body.clientWidth,
+    root: document.documentElement.scrollWidth <= document.documentElement.clientWidth,
+  }))).toEqual({ body: true, root: true });
+}
+
+async function expectVisibleKeyboardFocus(page: Page) {
+  const focus = await page.evaluate(() => {
+    const element = document.activeElement;
+    if (!(element instanceof HTMLElement)) return null;
+    const style = getComputedStyle(element);
+    return {
+      outlineStyle: style.outlineStyle,
+      outlineWidth: style.outlineWidth,
+    };
+  });
+  expect(focus).not.toBeNull();
+  expect(focus?.outlineStyle).not.toBe('none');
+  expect(Number.parseFloat(focus?.outlineWidth ?? '0')).toBeGreaterThanOrEqual(2);
+}
+
+async function tabTo(page: Page, target: Locator, maximumTabs = 30) {
+  for (let index = 0; index < maximumTabs; index += 1) {
+    await page.keyboard.press('Tab');
+    if (await target.evaluate((element) => element === document.activeElement)) return;
+  }
+  throw new Error(`Target did not receive keyboard focus after ${maximumTabs} Tab presses.`);
+}
+
 test('displays the typed Phase 1 snapshot safely with archived and partial coverage notices', async ({ page }) => {
   let releaseResponse: (() => void) | undefined;
   const waitForRelease = new Promise<void>((resolve) => { releaseResponse = resolve; });
@@ -295,6 +325,131 @@ test('displays the typed Phase 1 snapshot safely with archived and partial cover
   await expect(page.getByText('Issue coverage for this label is unavailable because GitHub could not complete the request.')).toBeVisible();
   await expect(page.locator('img')).toHaveCount(0);
   expect(remoteRequests).toEqual([]);
+});
+
+for (const viewport of [
+  { name: '360 px', width: 360, height: 900 },
+  { name: '1280 px', width: 1280, height: 900 },
+]) {
+  test(`contains long result content without page overflow at ${viewport.name}`, async ({ page }) => {
+    const longToken = 'x'.repeat(800);
+    const longContentResponse = {
+      ...successResponse,
+      repository: {
+        ...successResponse.repository,
+        url: `https://github.com/Canonical/${longToken}`,
+      },
+      snapshot: {
+        ...successResponse.snapshot,
+        documents: {
+          ...successResponse.snapshot.documents,
+          readme: {
+            status: 'available' as const,
+            document: {
+              ...successResponse.snapshot.documents.readme.document,
+              sourceUrl: `https://github.com/Canonical/Repo/blob/${commitSha}/${longToken}.md`,
+              text: `${longToken}\n${'const value = "long";'.repeat(80)}`,
+            },
+          },
+        },
+        analysis: {
+          ...successResponse.snapshot.analysis,
+          findings: successResponse.snapshot.analysis.findings.map((finding) => ({
+            ...finding,
+            evidence: {
+              ...finding.evidence,
+              sourceUrl: `https://github.com/Canonical/Repo/blob/${commitSha}/${longToken}`,
+              excerpt: longToken,
+              labels: 'labels' in finding.evidence ? [longToken] : undefined,
+            },
+          })),
+        },
+      },
+      issues: {
+        ...successResponse.issues,
+        items: successResponse.issues.items.map((issue) => ({
+          ...issue,
+          url: `https://github.com/Canonical/Repo/issues/${longToken}`,
+          labels: [longToken],
+          bodyExcerpt: longToken,
+        })),
+      },
+    };
+    await page.setViewportSize({ width: viewport.width, height: viewport.height });
+    await page.route('**/api/repository/snapshot', (route) => route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(longContentResponse),
+    }));
+    await page.goto('/');
+    await submit(page);
+
+    await expect(page.getByRole('heading', { name: 'Documentation findings' })).toBeVisible();
+    await expect(page.getByRole('region', { name: 'Coverage and scan status' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Labeled issues' })).toBeVisible();
+    await expect(page.locator('.labels span').filter({ hasText: longToken }).first()).toBeVisible();
+    await expectNoPageOverflow(page);
+    const preview = page.locator('.document-preview').first();
+    await expect(preview).toBeVisible();
+    expect(await preview.evaluate((element) => element.scrollWidth <= element.clientWidth
+      || getComputedStyle(element).overflowX === 'auto')).toBe(true);
+  });
+}
+
+test('supports keyboard-only navigation with visible focus through the main result controls', async ({ page }) => {
+  await page.route('**/api/repository/snapshot', (route) => route.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify(successResponse),
+  }));
+  await page.goto('/');
+
+  await page.keyboard.press('Tab');
+  await expect(page.getByLabel('GitHub repository URL')).toBeFocused();
+  await expectVisibleKeyboardFocus(page);
+  await page.keyboard.type('https://github.com/input/repo');
+  await page.keyboard.press('Tab');
+  await expect(page.getByRole('button', { name: 'Analyze repository' })).toBeFocused();
+  await expectVisibleKeyboardFocus(page);
+  await page.keyboard.press('Enter');
+
+  await expect(page.getByRole('status')).toHaveText('Repository analysis complete.');
+  const all = page.getByRole('radio', { name: 'All' });
+  await tabTo(page, all);
+  await expectVisibleKeyboardFocus(page);
+  await page.keyboard.press('ArrowRight');
+  await expect(page.getByRole('radio', { name: 'Documentation' })).toBeChecked();
+
+  const source = page.getByRole('region', { name: 'Documentation findings' })
+    .getByRole('link', { name: 'View pinned evidence on GitHub' }).first();
+  await tabTo(page, source);
+  await expectVisibleKeyboardFocus(page);
+  const copy = page.getByRole('region', { name: 'Documentation findings' })
+    .getByRole('button', { name: 'Copy next steps' }).first();
+  await tabTo(page, copy);
+  await expectVisibleKeyboardFocus(page);
+  await expect(page.getByRole('button', { name: /AI|explain/i })).toHaveCount(0);
+});
+
+test('announces loading and request errors without removing keyboard access', async ({ page }) => {
+  let releaseResponse: (() => void) | undefined;
+  const waitForRelease = new Promise<void>((resolve) => { releaseResponse = resolve; });
+  await page.route('**/api/repository/snapshot', async (route) => {
+    await waitForRelease;
+    await route.fulfill({
+      status: 503,
+      contentType: 'application/json',
+      body: JSON.stringify({ error: { message: 'Repository analysis is temporarily unavailable.' } }),
+    });
+  });
+  await page.goto('/');
+  await submit(page);
+
+  await expect(page.getByRole('status')).toHaveText('Analyzing repository…');
+  releaseResponse?.();
+  await expect(page.getByRole('alert')).toHaveText('Repository analysis is temporarily unavailable.');
+  await page.getByLabel('GitHub repository URL').focus();
+  await expectVisibleKeyboardFocus(page);
 });
 
 test('displays documentation findings before labeled issue opportunities with actionable details', async ({ page }) => {

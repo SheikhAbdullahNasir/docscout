@@ -1,6 +1,6 @@
 # DocScout progress
 
-Approved source: `PROJECT_SPEC.md` version 1.0. Updated October 4, 2026.
+Approved source: `PROJECT_SPEC.md` version 1.0. Updated October 5, 2026.
 
 ## Phase status
 
@@ -12,10 +12,11 @@ Approved source: `PROJECT_SPEC.md` version 1.0. Updated October 4, 2026.
   - [x] Phase 1D — bounded open labeled-issue retrieval with explicit coverage.
   - [x] Phase 1E — minimal browser integration for repository metadata, pinned documents, labeled issues, and truthful states.
 - [x] Phase 2 — evidence-backed core analyzers; completion gate passed October 5, 2026.
-- [ ] Phase 3 — usable results and complete UI states.
+- [x] Phase 3 — usable results and complete UI states; completion gate passed October 5, 2026.
   - [x] Phase 3A — beginner-readable typed finding sections and cards.
   - [x] Phase 3B — beginner-readable coverage, partial, and empty-result presentation.
   - [x] Phase 3C — browser-only finding filters and per-finding Copy next steps.
+  - [x] Phase 3D — responsive/accessibility cleanup and Phase 3 completion gate.
 - [ ] Phase 4 — reliable core, security limits, fixtures, and CI.
 - [ ] Phase 5 — optional AI; not requested, disabled.
 - [ ] Phase 6 — release readiness and real-repository validation.
@@ -320,7 +321,28 @@ Phase 3C adds three native browser-only finding filters: All, Documentation, and
 
 Focused browser verification passed all 18 tests in `tests/e2e/phase1.spec.ts`, including all three filters, keyboard operation, filtered-empty truthfulness, restored source order, exact checklist copying, clipboard failure, and retained Phase 3A cards and Phase 3B coverage. `npm run typecheck` passed across all three workspaces, `npm run lint` passed, and `git diff --check` passed. Playwright required the permitted elevated localhost execution mode and emitted the existing harmless `NO_COLOR`/`FORCE_COLOR` warnings.
 
-Stop after this verified Phase 3C checkpoint. The recommended next step is a separately scoped Phase 3D task. Responsive/accessibility cleanup beyond these controls, whole-page redesign, Phase 4 reliability work, and AI remain unimplemented.
+Phase 3D completed the responsive/accessibility gate without redesigning the existing result flow. Focused Playwright coverage now verifies result readability and zero page-level overflow at 360 px and 1280 px with genuinely unbroken 800-character URLs, excerpts, code, and labels. An initial independent review caught that the first hostile fixture contained normal hyphen wrap opportunities; the corrected regression failed at 360 px, and the smallest shipped fix bounds and wraps label text inside its own pill. Document previews retain their existing contained scrolling/wrapping behavior.
+
+Keyboard-only verification now Tabs through the repository input, Analyze button, native finding radios, source links, and Copy next steps controls, confirms a visible focus outline on each, and uses arrow-key radio selection. Existing accessible status/alert semantics announce loading, successful completion, request errors, copy success, and copy failure. Existing labeled controls, semantic headings, plain-text previews, cards, coverage, filters, manual checklist copying, partial/empty/error states, and documentation-before-issue ordering remain intact. No AI or explain control is present while AI is disabled.
+
+### Phase 3 completion gate (October 5, 2026)
+
+| Command/check | Actual result |
+|---|---|
+| Focused Phase 3D red/green browser checks | Corrected 360 px unbroken-label regression failed before the CSS fix; passed at both 360 px and 1280 px afterward |
+| `npm run lint` | Passed |
+| `npm run typecheck` | Passed across all three workspaces |
+| `npm test` | Passed: 311 tests across 13 suites |
+| `npm run build` | Passed: Vite frontend and TypeScript server builds |
+| `npm run test:production` | Passed: health, frontend HTML, built JS/CSS assets, unknown API 404 |
+| `npm run test:e2e` | Passed: all 25 Chromium tests, including 360/1280 result containment, keyboard focus, announcements, filters, copy actions, cards, coverage, previews, partial/empty/error states, and disabled-AI absence |
+| `git diff --check` | Passed |
+| Diff/secret review | Passed: changes limited to the scoped stylesheet, focused browser tests, and this progress record; no generated artifacts or credential material |
+| Independent review | Initial review found one Important unbroken-label overflow gap; regression and minimal CSS fix added. Follow-up found no remaining Critical or Important issues |
+
+Known limitations: automated browser verification uses Chromium only; it is not a multi-browser or assistive-technology audit. Playwright and production smoke required the permitted localhost execution mode, and Vitest required normal Windows temporary-file access after the restricted sandbox produced the known `ENOENT` failures. Unchanged reruns passed. Playwright emitted the existing harmless `NO_COLOR`/`FORCE_COLOR` warnings. No required verification was skipped or remains blocked.
+
+Stop after this verified Phase 3 completion gate. The recommended next step is a separately scoped Phase 4 reliability task. Phase 4 work and AI remain unimplemented.
 
 ## Phase 2 completion gate (October 5, 2026)
 
