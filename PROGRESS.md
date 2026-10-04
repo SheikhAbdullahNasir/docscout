@@ -15,6 +15,7 @@ Approved source: `PROJECT_SPEC.md` version 1.0. Updated October 4, 2026.
 - [ ] Phase 3 — usable results and complete UI states.
   - [x] Phase 3A — beginner-readable typed finding sections and cards.
   - [x] Phase 3B — beginner-readable coverage, partial, and empty-result presentation.
+  - [x] Phase 3C — browser-only finding filters and per-finding Copy next steps.
 - [ ] Phase 4 — reliable core, security limits, fixtures, and CI.
 - [ ] Phase 5 — optional AI; not requested, disabled.
 - [ ] Phase 6 — release readiness and real-repository validation.
@@ -315,9 +316,11 @@ Phase 3A now presents the existing typed findings in separate documentation and 
 
 Phase 3B adds an always-visible coverage and scan-status section driven only by existing typed snapshot/analyzer/issue coverage. It distinguishes complete and useful partial coverage; reports tree and document-selection completeness, available/unavailable/skipped selected documents, analyzed/unchecked Markdown and link counts, npm-script checked/skipped status and reason, per-label issue query status/pages/caps, document-content omissions, and documentation/issue result-limit omissions. Empty repositories retain issue coverage while explicitly stating that commit-backed document and analyzer coverage was unavailable. An empty aggregate finding list says only: “No suggestions found in the checked scope.”
 
-Focused browser verification passed all 14 tests in `tests/e2e/phase1.spec.ts`, including complete coverage, truncated/incomplete coverage, skipped npm-script analysis, sampled/capped/failed issue coverage, result omissions, truthful no-findings wording, and retained Phase 3A cards. `npm run typecheck` passed across all three workspaces, `npm run lint` passed, and `git diff --check` passed. Playwright required the permitted elevated localhost execution mode and emitted the existing harmless `NO_COLOR`/`FORCE_COLOR` warnings.
+Phase 3C adds three native browser-only finding filters: All, Documentation, and Labeled issues. Filtering never changes analyzer output, preserves the original documentation-before-issues order when cleared, and distinguishes an empty filtered category from a repository-level checked-scope empty result. Every finding card now has a keyboard-accessible Copy next steps action that copies only its existing typed verification steps as a short Markdown checklist. Successful copies use an accessible status; unavailable or rejected clipboard access uses a safe alert while leaving the visible checklist intact.
 
-Stop after this verified Phase 3B checkpoint. The recommended next step is a separately scoped Phase 3C task. Filters, copy-next-steps UI, whole-page redesign, Phase 4 reliability work, and AI remain unimplemented.
+Focused browser verification passed all 18 tests in `tests/e2e/phase1.spec.ts`, including all three filters, keyboard operation, filtered-empty truthfulness, restored source order, exact checklist copying, clipboard failure, and retained Phase 3A cards and Phase 3B coverage. `npm run typecheck` passed across all three workspaces, `npm run lint` passed, and `git diff --check` passed. Playwright required the permitted elevated localhost execution mode and emitted the existing harmless `NO_COLOR`/`FORCE_COLOR` warnings.
+
+Stop after this verified Phase 3C checkpoint. The recommended next step is a separately scoped Phase 3D task. Responsive/accessibility cleanup beyond these controls, whole-page redesign, Phase 4 reliability work, and AI remain unimplemented.
 
 ## Phase 2 completion gate (October 5, 2026)
 

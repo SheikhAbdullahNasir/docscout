@@ -328,6 +328,118 @@ test('displays documentation findings before labeled issue opportunities with ac
   expect(sectionOrder[1]).toContain('Labeled issue opportunities');
 });
 
+test('filters findings by category with keyboard controls and restores source order', async ({ page }) => {
+  await page.route('**/api/repository/snapshot', (route) => route.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify(successResponse),
+  }));
+  await page.goto('/');
+  await submit(page);
+
+  const all = page.getByRole('radio', { name: 'All' });
+  const documentation = page.getByRole('radio', { name: 'Documentation' });
+  const labeledIssues = page.getByRole('radio', { name: 'Labeled issues' });
+  await expect(all).toBeChecked();
+
+  await documentation.focus();
+  await documentation.press('Space');
+  await expect(documentation).toBeChecked();
+  await expect(page.getByRole('region', { name: 'Documentation findings' })).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Labeled issue opportunities' })).toHaveCount(0);
+
+  await labeledIssues.focus();
+  await labeledIssues.press('Space');
+  await expect(labeledIssues).toBeChecked();
+  await expect(page.getByRole('region', { name: 'Documentation findings' })).toHaveCount(0);
+  await expect(page.getByRole('region', { name: 'Labeled issue opportunities' })).toBeVisible();
+
+  await all.focus();
+  await all.press('Space');
+  await expect(all).toBeChecked();
+  const sectionOrder = await page.locator('.findings-section').evaluateAll((sections) => sections.map((section) => section.textContent));
+  expect(sectionOrder[0]).toContain('Documentation findings');
+  expect(sectionOrder[1]).toContain('Labeled issue opportunities');
+});
+
+test('distinguishes an empty filter from a repository with no suggestions', async ({ page }) => {
+  const issueOnlyResponse = {
+    schemaVersion: 1 as const,
+    repository: { ...repository, archived: false },
+    status: 'empty' as const,
+    snapshot: null,
+    message: 'This repository has no commit snapshot or files to scan yet.',
+    issues: { ...issues, coverage: { ...issues.coverage, complete: true, sampled: false } },
+    analysis: {
+      findings: analysis.labeledIssues.findings,
+      coverage: analysis.coverage,
+      labeledIssues: analysis.labeledIssues,
+    },
+  };
+  await page.route('**/api/repository/snapshot', (route) => route.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify(issueOnlyResponse),
+  }));
+  await page.goto('/');
+  await submit(page);
+  await page.getByRole('radio', { name: 'Documentation' }).check();
+
+  await expect(page.getByText('No findings match the Documentation filter.')).toBeVisible();
+  await expect(page.getByText('No suggestions found in the checked scope.')).toHaveCount(0);
+});
+
+test('copies only the existing next-step checklist from a keyboard-activated card action', async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: {
+        writeText: async (text: string) => {
+          (window as Window & { __copiedText?: string }).__copiedText = text;
+        },
+      },
+    });
+  });
+  await page.route('**/api/repository/snapshot', (route) => route.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify(successResponse),
+  }));
+  await page.goto('/');
+  await submit(page);
+
+  const card = page.getByRole('region', { name: 'Documentation findings' }).getByRole('article').first();
+  const copy = card.getByRole('button', { name: 'Copy next steps' });
+  await copy.focus();
+  await copy.press('Enter');
+
+  await expect(card.getByRole('status')).toHaveText('Next steps copied.');
+  const copiedText = await page.evaluate(() => (window as Window & { __copiedText?: string }).__copiedText);
+  expect(copiedText).toBe('- [ ] Open the pinned README source and confirm the link target.');
+});
+
+test('reports clipboard failure safely without removing the manual checklist', async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText: async () => { throw new Error('clipboard denied'); } },
+    });
+  });
+  await page.route('**/api/repository/snapshot', (route) => route.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify(successResponse),
+  }));
+  await page.goto('/');
+  await submit(page);
+
+  const card = page.getByRole('region', { name: 'Documentation findings' }).getByRole('article').first();
+  await card.getByRole('button', { name: 'Copy next steps' }).click();
+
+  await expect(card.getByRole('alert')).toHaveText('Could not copy next steps. Use the checklist shown on this card.');
+  await expect(card.getByText('Open the pinned README source and confirm the link target.')).toBeVisible();
+});
+
 test('shows complete checked coverage without implying unavailable documents were scanned', async ({ page }) => {
   const completeCoverageResponse = {
     ...emptyResponse,

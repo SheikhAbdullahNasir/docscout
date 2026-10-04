@@ -278,6 +278,19 @@ function FindingEvidence({ finding }: { finding: Finding }) {
 }
 
 function FindingCard({ finding }: { finding: Finding }) {
+  const [copyStatus, setCopyStatus] = useState<'idle' | 'success' | 'error'>('idle');
+
+  async function copyNextSteps() {
+    const checklist = finding.verificationSteps.map((step) => `- [ ] ${step}`).join('\n');
+    try {
+      if (!navigator.clipboard?.writeText) throw new Error('Clipboard unavailable');
+      await navigator.clipboard.writeText(checklist);
+      setCopyStatus('success');
+    } catch {
+      setCopyStatus('error');
+    }
+  }
+
   return (
     <article className="issue finding-card">
       <h3>{finding.title}</h3>
@@ -288,6 +301,11 @@ function FindingCard({ finding }: { finding: Finding }) {
       <p>{finding.whyItMatters}</p>
       <h4>Verification and next steps</h4>
       <ul>{finding.verificationSteps.map((step) => <li key={step}>{step}</li>)}</ul>
+      <button type="button" onClick={copyNextSteps}>Copy next steps</button>
+      {copyStatus === 'success' && <p role="status">Next steps copied.</p>}
+      {copyStatus === 'error' && (
+        <p role="alert" className="error">Could not copy next steps. Use the checklist shown on this card.</p>
+      )}
       <h4>Limitations</h4>
       <ul>{finding.limitations.map((limitation) => <li key={limitation}>{limitation}</li>)}</ul>
     </article>
@@ -295,31 +313,53 @@ function FindingCard({ finding }: { finding: Finding }) {
 }
 
 function Findings({ findings }: { findings: Finding[] }) {
+  const [filter, setFilter] = useState<'all' | 'documentation' | 'issues'>('all');
   const documentationFindings = findings.filter((finding) => finding.type !== 'labeled-issue');
   const issueFindings = findings.filter((finding): finding is LabeledIssueFinding => finding.type === 'labeled-issue');
+  const filteredEmpty = (filter === 'documentation' && documentationFindings.length === 0)
+    || (filter === 'issues' && issueFindings.length === 0);
   return (
     <>
-      <section className="result-section findings-section" aria-labelledby="documentation-findings-heading">
-        <h2 id="documentation-findings-heading">Documentation findings</h2>
-        {documentationFindings.length > 0 ? (
-          <div className="issue-list">
-            {documentationFindings.map((finding) => <FindingCard key={finding.id} finding={finding} />)}
-          </div>
-        ) : (
-          <p>No documentation findings were produced from the available checked evidence.</p>
-        )}
-      </section>
-      <section className="result-section findings-section" aria-labelledby="issue-findings-heading">
-        <h2 id="issue-findings-heading">Labeled issue opportunities</h2>
-        <p className="section-note">Maintainer labels are evidence of a possible opportunity, not a DocScout difficulty estimate.</p>
-        {issueFindings.length > 0 ? (
-          <div className="issue-list">
-            {issueFindings.map((finding) => <FindingCard key={finding.id} finding={finding} />)}
-          </div>
-        ) : (
-          <p>No labeled issue opportunities were produced from the available supported-label evidence.</p>
-        )}
-      </section>
+      <fieldset className="result-section" aria-label="Finding filters">
+        <legend>Filter findings</legend>
+        <label><input type="radio" name="finding-filter" value="all" checked={filter === 'all'}
+          onChange={() => setFilter('all')} /> All</label>
+        <label><input type="radio" name="finding-filter" value="documentation" checked={filter === 'documentation'}
+          onChange={() => setFilter('documentation')} /> Documentation</label>
+        <label><input type="radio" name="finding-filter" value="issues" checked={filter === 'issues'}
+          onChange={() => setFilter('issues')} /> Labeled issues</label>
+      </fieldset>
+      {filteredEmpty ? (
+        <p role="status">No findings match the {filter === 'documentation' ? 'Documentation' : 'Labeled issues'} filter.</p>
+      ) : (
+        <>
+          {filter !== 'issues' && (
+            <section className="result-section findings-section" aria-labelledby="documentation-findings-heading">
+              <h2 id="documentation-findings-heading">Documentation findings</h2>
+              {documentationFindings.length > 0 ? (
+                <div className="issue-list">
+                  {documentationFindings.map((finding) => <FindingCard key={finding.id} finding={finding} />)}
+                </div>
+              ) : (
+                <p>No documentation findings were produced from the available checked evidence.</p>
+              )}
+            </section>
+          )}
+          {filter !== 'documentation' && (
+            <section className="result-section findings-section" aria-labelledby="issue-findings-heading">
+              <h2 id="issue-findings-heading">Labeled issue opportunities</h2>
+              <p className="section-note">Maintainer labels are evidence of a possible opportunity, not a DocScout difficulty estimate.</p>
+              {issueFindings.length > 0 ? (
+                <div className="issue-list">
+                  {issueFindings.map((finding) => <FindingCard key={finding.id} finding={finding} />)}
+                </div>
+              ) : (
+                <p>No labeled issue opportunities were produced from the available supported-label evidence.</p>
+              )}
+            </section>
+          )}
+        </>
+      )}
     </>
   );
 }
