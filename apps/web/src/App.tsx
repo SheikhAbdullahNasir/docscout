@@ -78,7 +78,7 @@ function isNpmScriptAnalysis(value: unknown): boolean {
   const coverage = value.coverage;
   const skipReasons = [
     'readme-unavailable', 'manifest-unavailable', 'manifest-invalid-json',
-    'manifest-not-object', 'scripts-missing', 'scripts-invalid',
+    'manifest-not-object', 'scripts-missing', 'scripts-invalid', 'parser-safety-limit',
   ];
   const skipped = coverage.skippedByReason;
   return findings && (coverage.status === 'checked' || coverage.status === 'skipped')

@@ -135,7 +135,7 @@ export type RepositoryNpmScriptAnalysis = {
   coverage: {
     status: 'checked' | 'skipped';
     skipReason?: 'readme-unavailable' | 'manifest-unavailable' | 'manifest-invalid-json'
-      | 'manifest-not-object' | 'scripts-missing' | 'scripts-invalid';
+      | 'manifest-not-object' | 'scripts-missing' | 'scripts-invalid' | 'parser-safety-limit';
     supportedCommandsChecked: number;
     commandsSkipped: number;
     findingsProduced: number;

@@ -139,6 +139,19 @@ describe('README npm script analysis', () => {
   });
 
   it.each([
+    ['here-document', 'cat << EOF\nnpm run dev\nEOF'],
+    ['line continuation', 'echo setup \\\nnpm run dev'],
+    ['conditional body', 'if false; then\nnpm run dev\nfi'],
+    ['multiline quote', 'echo "\nnpm run dev\n"'],
+  ])('does not treat npm text inside a %s as a standalone command', (_label, body) => {
+    const result = analyze(`\`\`\`bash\n${body}\n\`\`\``);
+
+    expect(result.findings).toEqual([]);
+    expect(result.coverage.supportedCommandsChecked).toBe(0);
+    expect(result.coverage.skippedByReason.ambiguousShell).toBeGreaterThanOrEqual(1);
+  });
+
+  it.each([
     'npm run preview --if-present',
     'npm run --if-present preview',
     'npm --if-present run preview',
@@ -163,6 +176,27 @@ describe('README npm script analysis', () => {
 
     expect(result.findings).toEqual([]);
     expect(result.coverage.skippedByReason.workspace).toBe(1);
+  });
+
+  it.each([
+    'npm run dev --prefix examples',
+    'npm run dev -C examples',
+    'npm run dev --ws',
+    'npm run dev --if-pres',
+    'npm run dev --color',
+  ])('skips npm configuration flags before the script-argument delimiter: %s', (command) => {
+    const result = analyze(`\`\`\`bash\n${command}\n\`\`\``);
+
+    expect(result.findings).toEqual([]);
+    expect(result.coverage).toMatchObject({ supportedCommandsChecked: 0, commandsSkipped: 1 });
+  });
+
+  it('allows ordinary script arguments after npm argument delimiter without interpreting them as npm flags', () => {
+    const result = analyze('```bash\nnpm run dev -- --workspace demo --if-present --prefix examples\n```');
+
+    expect(result.findings).toHaveLength(1);
+    expect(result.findings[0].evidence.script).toBe('dev');
+    expect(result.coverage.supportedCommandsChecked).toBe(1);
   });
 
   it.each([
@@ -196,6 +230,13 @@ describe('README npm script analysis', () => {
 
   it.each(['pushd examples', 'popd'])('treats %s as uncertain working-directory state', (command) => {
     const result = analyze(`\`\`\`bash\n${command}\nnpm run dev\n\`\`\``);
+
+    expect(result.findings).toEqual([]);
+    expect(result.coverage.skippedByReason.uncertainWorkingDirectory).toBe(1);
+  });
+
+  it('invalidates root context after a skipped compound command can change directory', () => {
+    const result = analyze('```bash\necho setup && cd examples\nnpm run dev\n```');
 
     expect(result.findings).toEqual([]);
     expect(result.coverage.skippedByReason.uncertainWorkingDirectory).toBe(1);
@@ -312,6 +353,40 @@ describe('README npm script analysis', () => {
       supportedCommandsChecked: 51,
       findingsProduced: 50,
       findingsOmitted: 1,
+    });
+  });
+
+  it('bounds displayed script evidence while retaining the full script for comparison and identity', () => {
+    const script = `missing-${'x'.repeat(1_000)}`;
+    const result = analyze(`\`\`\`bash\nnpm run ${script}\n\`\`\``);
+
+    expect(result.findings).toHaveLength(1);
+    expect(result.findings[0].evidence.script.length).toBeLessThanOrEqual(240);
+    expect(result.findings[0].evidence.script).toMatch(/\.\.\.$/);
+  });
+
+  it.each([
+    ['blockquote', '> ```bash\n> npm run dev\n> ```', 2],
+    ['list item', '- ```bash\n  npm run dev\n  ```', 2],
+  ])('analyzes a supported fenced block nested in a %s with the correct source line', (_label, markdown, sourceLine) => {
+    const result = analyze(markdown);
+
+    expect(result.findings).toHaveLength(1);
+    expect(result.findings[0].evidence).toMatchObject({ script: 'dev', sourceLine });
+  });
+
+  it('skips a link-dense README before synchronous Markdown parsing', () => {
+    const markdown = Array.from({ length: 1_001 }, () => '[x](a)').join(' ');
+    const result = analyzeReadmeNpmScripts({ documents: documents(markdown, '{"scripts":{}}') });
+
+    expect(result).toMatchObject({
+      findings: [],
+      coverage: {
+        status: 'skipped',
+        skipReason: 'parser-safety-limit',
+        supportedCommandsChecked: 0,
+        findingsProduced: 0,
+      },
     });
   });
 });

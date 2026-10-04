@@ -8,6 +8,7 @@ import type {
 } from '@docscout/shared';
 import { unified } from 'unified';
 import remarkParse from 'remark-parse';
+import { exceedsMarkdownParserSafetyLimit } from './markdownSafety.js';
 
 type Position = {
   start: { line: number; offset?: number };
@@ -46,7 +47,6 @@ const LIMITATIONS = [
 ];
 
 const MAX_FINDINGS = 50;
-const MAX_LINK_OPENERS_PER_DOCUMENT = 1_000;
 
 function referenceKey(identifier: string): string {
   return identifier.trim().replace(/\s+/g, ' ').toLowerCase();
@@ -123,14 +123,6 @@ function excerpt(text: string, line: number): string {
 
 function boundedEvidence(value: string): string {
   return value.length <= 240 ? value : `${value.slice(0, 237)}...`;
-}
-
-function exceedsParserSafetyLimit(text: string): boolean {
-  let openers = 0;
-  for (const character of text) {
-    if (character === '[' && (openers += 1) > MAX_LINK_OPENERS_PER_DOCUMENT) return true;
-  }
-  return false;
 }
 
 function unsupported(reason: UnsupportedReason): Destination {
@@ -254,7 +246,7 @@ export function analyzeRepositoryMarkdownTargets(input: AnalyzerInput): Reposito
   ];
 
   for (const document of selectedDocuments) {
-    if (exceedsParserSafetyLimit(document.text)) {
+    if (exceedsMarkdownParserSafetyLimit(document.text)) {
       coverage.documentsUnchecked += 1;
       coverage.uncheckedDocumentsByReason.parserSafetyLimit += 1;
       continue;

@@ -6,13 +6,14 @@ import type {
 } from '@docscout/shared';
 import { unified } from 'unified';
 import remarkParse from 'remark-parse';
+import { exceedsMarkdownParserSafetyLimit } from './markdownSafety.js';
 
 type MarkdownNode = {
   type: string;
   lang?: string | null;
   value?: string;
   children?: MarkdownNode[];
-  position?: { start: { line: number } };
+  position?: { start: { line: number; column?: number; offset?: number } };
 };
 
 type AnalyzerInput = { documents: RepositoryDocuments };
@@ -113,7 +114,7 @@ function finding(
       sourceLine,
       excerpt: evidence,
       command: evidence,
-      script,
+      script: bounded(script),
       manifestPath: 'package.json',
     },
     whyItMatters: 'A newcomer following the README may be unable to run this command if it is expected to use the root package.json.',
@@ -143,9 +144,11 @@ function walk(root: MarkdownNode): MarkdownNode[] {
   return result;
 }
 
-function fencedCodeBlock(node: MarkdownNode, sourceLines: string[]): boolean {
-  const openingLine = sourceLines[(node.position?.start.line ?? 1) - 1]?.trimStart() ?? '';
-  return /^(`{3,}|~{3,})/.test(openingLine);
+function fencedCodeBlock(node: MarkdownNode, source: string, sourceLines: string[]): boolean {
+  const start = node.position?.start;
+  if (typeof start?.offset === 'number') return /^(`{3,}|~{3,})/.test(source.slice(start.offset));
+  const openingLine = sourceLines[(start?.line ?? 1) - 1] ?? '';
+  return /^(`{3,}|~{3,})/.test(openingLine.slice((start?.column ?? 1) - 1));
 }
 
 function ambiguousShell(line: string): boolean {
@@ -157,8 +160,30 @@ function ambiguousShell(line: string): boolean {
 function workspaceAware(tokens: string[]): boolean {
   return tokens.some((token) => WORKSPACE_FLAGS.has(token)
     || token.startsWith('-w=') || token.startsWith('-ws=')
+    || token === '--ws'
     || token.startsWith('--workspace=') || token.startsWith('--workspaces=')
     || token.startsWith('--include-workspace-root='));
+}
+
+function hasOddUnescapedQuote(line: string, quote: "'" | '"'): boolean {
+  let count = 0;
+  for (let index = 0; index < line.length; index += 1) {
+    if (line[index] !== quote) continue;
+    let precedingBackslashes = 0;
+    for (let before = index - 1; before >= 0 && line[before] === '\\'; before -= 1) precedingBackslashes += 1;
+    if (precedingBackslashes % 2 === 0) count += 1;
+  }
+  return count % 2 === 1;
+}
+
+function requiresMultilineShellInterpretation(lines: string[]): boolean {
+  return lines.some((rawLine) => {
+    const line = rawLine.trim();
+    return line.includes('<<') || /\\\s*$/.test(rawLine)
+      || hasOddUnescapedQuote(rawLine, "'") || hasOddUnescapedQuote(rawLine, '"')
+      || /^(?:if|then|elif|else|fi|for|while|until|case|esac|select|function|do|done)(?:\s|;|$)/.test(line)
+      || /^(?:\{|\})(?:\s|;|$)/.test(line);
+  });
 }
 
 function changeDirectory(current: WorkingDirectory, line: string): WorkingDirectory {
@@ -190,6 +215,7 @@ export function analyzeReadmeNpmScripts({ documents }: AnalyzerInput): Repositor
   if ('skipReason' in manifest) return skipped(coverage, manifest.skipReason);
 
   const readme = documents.readme.document;
+  if (exceedsMarkdownParserSafetyLimit(readme.text)) return skipped(coverage, 'parser-safety-limit');
   const sourceLines = readme.text.split(/\r\n|\n|\r/);
   const root = unified().use(remarkParse).parse(readme.text) as MarkdownNode;
   const findings = new Map<string, PossibleMissingNpmScriptFinding>();
@@ -198,13 +224,18 @@ export function analyzeReadmeNpmScripts({ documents }: AnalyzerInput): Repositor
   for (const node of walk(root)) {
     if (node.type !== 'code' || typeof node.value !== 'string') continue;
     const language = node.lang?.toLowerCase() ?? '';
-    if (!fencedCodeBlock(node, sourceLines) || !SUPPORTED_BLOCK_LANGUAGES.has(language)) {
+    if (!fencedCodeBlock(node, readme.text, sourceLines) || !SUPPORTED_BLOCK_LANGUAGES.has(language)) {
       coverage.skippedByReason.unsupportedBlock += 1;
       continue;
     }
     let workingDirectory: WorkingDirectory = { status: 'known', segments: [] };
     const contentStartLine = (node.position?.start.line ?? 1) + 1;
-    for (const [lineIndex, rawLine] of node.value.split(/\r\n|\n|\r/).entries()) {
+    const blockLines = node.value.split(/\r\n|\n|\r/);
+    if (requiresMultilineShellInterpretation(blockLines)) {
+      skipCommand(coverage, 'ambiguousShell');
+      continue;
+    }
+    for (const [lineIndex, rawLine] of blockLines.entries()) {
       const command = rawLine.trim();
       if (command === '') continue;
       if (/^(?:pushd|popd)(?:\s|$)/.test(command)) {
@@ -220,21 +251,29 @@ export function analyzeReadmeNpmScripts({ documents }: AnalyzerInput): Repositor
         continue;
       }
       const tokens = command.split(/\s+/);
-      if (tokens.some((token) => token === '--if-present' || token.startsWith('--if-present='))) {
+      const delimiterIndex = tokens.indexOf('--', 3);
+      const npmTokens = tokens.slice(0, delimiterIndex < 0 ? tokens.length : delimiterIndex);
+      if (npmTokens.some((token) => token === '--if-present' || token.startsWith('--if-present=')
+        || token.startsWith('--if-pres'))) {
         skipCommand(coverage, 'ifPresent');
         continue;
       }
-      if (workspaceAware(tokens)) {
+      if (workspaceAware(npmTokens)) {
         skipCommand(coverage, 'workspace');
         continue;
       }
       if (ambiguousShell(command)) {
         skipCommand(coverage, 'ambiguousShell');
+        if (/\b(?:cd|pushd|popd)\b/.test(command)) workingDirectory = { status: 'uncertain' };
         continue;
       }
-      const supported = tokens[0] === 'npm' && (tokens[1] === 'run' || tokens[1] === 'run-script')
+      const supported = npmTokens[0] === 'npm' && (npmTokens[1] === 'run' || npmTokens[1] === 'run-script')
         && tokens.length >= 3 && /^[A-Za-z0-9][A-Za-z0-9._:@/-]*$/.test(tokens[2]);
       if (!supported) {
+        skipCommand(coverage, 'unsupportedCommand');
+        continue;
+      }
+      if (npmTokens.slice(3).some((token) => token.startsWith('-'))) {
         skipCommand(coverage, 'unsupportedCommand');
         continue;
       }
