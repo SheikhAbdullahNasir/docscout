@@ -184,6 +184,52 @@ export type RepositoryIssues = {
   };
 };
 
+export type LabeledIssueFinding = {
+  id: string;
+  type: 'labeled-issue';
+  title: 'Maintainer-labeled good first issue' | 'Maintainer-labeled help wanted issue';
+  confidence: 'maintainer-label';
+  difficulty: 'unknown';
+  evidence: {
+    sourceUrl: string;
+    issueNumber: number;
+    issueTitle: string;
+    labels: string[];
+    assigned: boolean;
+    assignees: string[];
+    excerpt: string;
+    updatedAt: string;
+  };
+  whyItMatters: string;
+  verificationSteps: string[];
+  limitations: string[];
+};
+
+export type RepositoryLabeledIssueAnalysis = {
+  findings: LabeledIssueFinding[];
+  coverage: {
+    eligibleIssues: number;
+    findingsProduced: number;
+    findingsOmitted: number;
+    issueRetrieval: RepositoryIssues['coverage'];
+    limitations: string[];
+  };
+};
+
+export type Finding = MissingLocalTargetFinding | PossibleMissingNpmScriptFinding | LabeledIssueFinding;
+
+export type FindingAggregationCoverage = {
+  documentationFindingsProduced: number;
+  documentationFindingsOmitted: number;
+  issueFindingsProduced: number;
+};
+
+export type EmptyRepositoryAnalysis = {
+  findings: Finding[];
+  coverage: FindingAggregationCoverage;
+  labeledIssues: RepositoryLabeledIssueAnalysis;
+};
+
 export type RepositorySnapshotResult =
   | { status: 'ready'; snapshot: {
     defaultBranch: string;
@@ -192,11 +238,14 @@ export type RepositorySnapshotResult =
     tree: { entries: RepositoryTreeEntry[]; truncated: boolean; complete: boolean };
     documents: RepositoryDocuments;
     analysis: {
+      findings: Finding[];
+      coverage: FindingAggregationCoverage;
       markdownLinks: RepositoryMarkdownLinkAnalysis;
       npmScripts: RepositoryNpmScriptAnalysis;
+      labeledIssues: RepositoryLabeledIssueAnalysis;
     };
   }; issues: RepositoryIssues }
-  | { status: 'empty'; snapshot: null; message: string; issues: RepositoryIssues };
+  | { status: 'empty'; snapshot: null; message: string; issues: RepositoryIssues; analysis: EmptyRepositoryAnalysis };
 
 export type RepositorySnapshotResponse = RepositorySnapshotResult & {
   schemaVersion: 1;

@@ -91,7 +91,48 @@ const analysis = {
       limitations: [],
     },
   },
+  labeledIssues: {
+    findings: [{
+      id: 'labeled-issue:1234567890abcdef',
+      type: 'labeled-issue' as const,
+      title: 'Maintainer-labeled good first issue' as const,
+      confidence: 'maintainer-label' as const,
+      difficulty: 'unknown' as const,
+      evidence: {
+        sourceUrl: issues.items[0].url,
+        issueNumber: 42,
+        issueTitle: issues.items[0].title,
+        labels: issues.items[0].labels,
+        assigned: true,
+        assignees: ['maintainer'],
+        excerpt: issues.items[0].bodyExcerpt,
+        updatedAt: issues.items[0].updatedAt,
+      },
+      whyItMatters: 'Repository maintainers applied a label commonly intended to signal a possible starting point.',
+      verificationSteps: ['Open the issue and read the latest discussion.'],
+      limitations: ['Issue retrieval was sampled, so these findings may not cover all possible maintainer-labeled opportunities.'],
+    }],
+    coverage: {
+      eligibleIssues: 1,
+      findingsProduced: 1,
+      findingsOmitted: 0,
+      issueRetrieval: issues.coverage,
+      limitations: ['Issue retrieval was sampled, so these findings may not cover all possible maintainer-labeled opportunities.'],
+    },
+  },
+  findings: [] as Array<Record<string, unknown>>,
+  coverage: {
+    documentationFindingsProduced: 0,
+    documentationFindingsOmitted: 0,
+    issueFindingsProduced: 1,
+  },
 };
+
+analysis.findings = [
+  ...analysis.markdownLinks.findings,
+  ...analysis.npmScripts.findings,
+  ...analysis.labeledIssues.findings,
+];
 
 const successResponse = {
   schemaVersion: 1 as const,
@@ -313,6 +354,11 @@ test('shows an empty repository snapshot without losing retained issue coverage'
     snapshot: null,
     message: 'This repository has no commit snapshot or files to scan yet.',
     issues: { ...issues, coverage: { ...issues.coverage, complete: true, sampled: false } },
+    analysis: {
+      findings: analysis.labeledIssues.findings,
+      coverage: analysis.coverage,
+      labeledIssues: analysis.labeledIssues,
+    },
   };
   await page.route('**/api/repository/snapshot', (route) => route.fulfill({
     status: 200,
@@ -385,6 +431,29 @@ test('shows a safe error when a successful response omits required Phase 2B anal
     snapshot: {
       ...emptyResponse.snapshot,
       analysis: { markdownLinks: emptyResponse.snapshot.analysis.markdownLinks },
+    },
+  };
+  await page.route('**/api/repository/snapshot', (route) => route.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify(malformedResponse),
+  }));
+  await page.goto('/');
+  await submit(page);
+
+  await expect(page.getByRole('alert')).toContainText('Repository analysis returned an invalid response. Please try again later.');
+});
+
+test('shows a safe error when a successful response omits required Phase 2C analysis', async ({ page }) => {
+  const malformedResponse = {
+    ...emptyResponse,
+    snapshot: {
+      ...emptyResponse.snapshot,
+      analysis: {
+        findings: emptyResponse.snapshot.analysis.findings,
+        markdownLinks: emptyResponse.snapshot.analysis.markdownLinks,
+        npmScripts: emptyResponse.snapshot.analysis.npmScripts,
+      },
     },
   };
   await page.route('**/api/repository/snapshot', (route) => route.fulfill({

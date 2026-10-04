@@ -93,6 +93,58 @@ function isNpmScriptAnalysis(value: unknown): boolean {
     && isStringArray(coverage.limitations);
 }
 
+function isIssueCoverage(value: unknown): boolean {
+  if (!isRecord(value) || typeof value.complete !== 'boolean' || typeof value.sampled !== 'boolean'
+    || !Array.isArray(value.queries)) return false;
+  return value.queries.every((query) => isRecord(query)
+    && (query.label === 'good first issue' || query.label === 'help wanted')
+    && (query.status === 'complete' || query.status === 'partial' || query.status === 'failed')
+    && isCount(query.pagesFetched) && typeof query.capped === 'boolean'
+    && (query.message === undefined || typeof query.message === 'string'));
+}
+
+function isLabeledIssueAnalysis(value: unknown): boolean {
+  if (!isRecord(value) || !Array.isArray(value.findings) || !isRecord(value.coverage)) return false;
+  const findings = value.findings.every((finding) => isRecord(finding)
+    && typeof finding.id === 'string' && finding.type === 'labeled-issue'
+    && (finding.title === 'Maintainer-labeled good first issue'
+      || finding.title === 'Maintainer-labeled help wanted issue')
+    && finding.confidence === 'maintainer-label' && finding.difficulty === 'unknown'
+    && isRecord(finding.evidence) && typeof finding.evidence.sourceUrl === 'string'
+    && isCount(finding.evidence.issueNumber) && finding.evidence.issueNumber > 0
+    && typeof finding.evidence.issueTitle === 'string' && isStringArray(finding.evidence.labels)
+    && typeof finding.evidence.assigned === 'boolean' && isStringArray(finding.evidence.assignees)
+    && typeof finding.evidence.excerpt === 'string' && typeof finding.evidence.updatedAt === 'string'
+    && typeof finding.whyItMatters === 'string'
+    && isStringArray(finding.verificationSteps) && isStringArray(finding.limitations));
+  const coverage = value.coverage;
+  return findings
+    && ['eligibleIssues', 'findingsProduced', 'findingsOmitted'].every((key) => isCount(coverage[key]))
+    && isIssueCoverage(coverage.issueRetrieval)
+    && isStringArray(coverage.limitations);
+}
+
+function isOrderedFindingList(value: unknown): boolean {
+  if (!Array.isArray(value)) return false;
+  let issueSeen = false;
+  return value.every((finding) => {
+    if (!isRecord(finding) || typeof finding.id !== 'string') return false;
+    if (finding.type === 'labeled-issue') {
+      issueSeen = true;
+      return true;
+    }
+    return !issueSeen && (finding.type === 'missing-local-target'
+      || finding.type === 'possible-missing-npm-script');
+  });
+}
+
+function isAggregationCoverage(value: unknown): boolean {
+  return isRecord(value)
+    && isCount(value.documentationFindingsProduced)
+    && isCount(value.documentationFindingsOmitted)
+    && isCount(value.issueFindingsProduced);
+}
+
 function isSnapshotResponse(value: unknown): value is RepositorySnapshotResponse {
   if (!isRecord(value) || value.schemaVersion !== 1 || (value.status !== 'ready' && value.status !== 'empty')) return false;
   const repository = value.repository;
@@ -100,25 +152,26 @@ function isSnapshotResponse(value: unknown): value is RepositorySnapshotResponse
   if (!isRecord(repository) || typeof repository.owner !== 'string' || typeof repository.name !== 'string'
     || typeof repository.url !== 'string' || typeof repository.archived !== 'boolean'
     || typeof repository.defaultBranch !== 'string' || repository.private !== false) return false;
-  if (!isRecord(issues) || !Array.isArray(issues.items) || !isRecord(issues.coverage)
-    || typeof issues.coverage.complete !== 'boolean' || typeof issues.coverage.sampled !== 'boolean'
-    || !Array.isArray(issues.coverage.queries)) return false;
+  if (!isRecord(issues) || !Array.isArray(issues.items) || !isIssueCoverage(issues.coverage)) return false;
   const validItems = issues.items.every((issue) => isRecord(issue) && typeof issue.number === 'number'
     && typeof issue.title === 'string' && typeof issue.url === 'string' && isStringArray(issue.labels)
     && typeof issue.updatedAt === 'string' && isStringArray(issue.assignees)
     && typeof issue.assigned === 'boolean' && typeof issue.bodyExcerpt === 'string');
-  const validQueries = issues.coverage.queries.every((query) => isRecord(query)
-    && (query.label === 'good first issue' || query.label === 'help wanted')
-    && (query.status === 'complete' || query.status === 'partial' || query.status === 'failed')
-    && typeof query.pagesFetched === 'number' && typeof query.capped === 'boolean'
-    && (query.message === undefined || typeof query.message === 'string'));
-  if (!validItems || !validQueries) return false;
-  if (value.status === 'empty') return value.snapshot === null && typeof value.message === 'string';
+  if (!validItems) return false;
+  if (value.status === 'empty') {
+    return value.snapshot === null && typeof value.message === 'string'
+      && isRecord(value.analysis) && isOrderedFindingList(value.analysis.findings)
+      && isAggregationCoverage(value.analysis.coverage)
+      && isLabeledIssueAnalysis(value.analysis.labeledIssues);
+  }
   if (!isRecord(value.snapshot) || typeof value.snapshot.commitSha !== 'string'
     || !isRecord(value.snapshot.tree) || typeof value.snapshot.tree.complete !== 'boolean'
     || !isRecord(value.snapshot.documents) || !isRecord(value.snapshot.analysis)
+    || !isOrderedFindingList(value.snapshot.analysis.findings)
+    || !isAggregationCoverage(value.snapshot.analysis.coverage)
     || !isMarkdownLinkAnalysis(value.snapshot.analysis.markdownLinks)
-    || !isNpmScriptAnalysis(value.snapshot.analysis.npmScripts)) return false;
+    || !isNpmScriptAnalysis(value.snapshot.analysis.npmScripts)
+    || !isLabeledIssueAnalysis(value.snapshot.analysis.labeledIssues)) return false;
   const documents = value.snapshot.documents;
   return typeof documents.selectionComplete === 'boolean'
     && isDocumentState(documents.readme) && isDocumentState(documents.contributing)

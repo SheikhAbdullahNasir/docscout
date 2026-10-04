@@ -2,6 +2,8 @@ import type { PublicRepositoryMetadata, RepositorySnapshotResult } from '@docsco
 import { ApplicationError } from '../errors.js';
 import { analyzeRepositoryMarkdownTargets } from '../analyzers/localLinks.js';
 import { analyzeReadmeNpmScripts } from '../analyzers/npmScripts.js';
+import { analyzeLabeledIssues } from '../analyzers/labeledIssues.js';
+import { combineFindings } from '../analyzers/analysis.js';
 import { validOwner, validRepo, type ValidatedRepository } from '../security/repositoryUrl.js';
 import { retrieveDocuments, type DocumentCandidate } from './documents.js';
 import { retrieveIssues } from './issues.js';
@@ -101,7 +103,9 @@ export class GitHubClient {
     const value = await this.requestJson(`${prefix}/commits/${encodeURIComponent(repository.defaultBranch)}`, { stage: 'commit' });
     if (value === EMPTY_REPOSITORY) {
       const issues = await this.getIssues(repository, prefix);
-      return { status: 'empty', snapshot: null, message: 'This repository has no commit snapshot or files to scan yet.', issues };
+      const labeledIssues = analyzeLabeledIssues({ repository, issues });
+      const analysis = { ...combineFindings([], [], labeledIssues.findings, 0), labeledIssues };
+      return { status: 'empty', snapshot: null, message: 'This repository has no commit snapshot or files to scan yet.', issues, analysis };
     }
     const { commitSha, treeSha } = commitSnapshot(value);
     const tree = recursiveTree(await this.requestJson(`${prefix}/git/trees/${treeSha}?recursive=1`, { stage: 'tree', limit: 10 * 1024 * 1024 }), treeSha);
@@ -110,11 +114,22 @@ export class GitHubClient {
       const content = await this.requestJson(`${prefix}/contents/${encodedPath}?ref=${encodeURIComponent(commitSha)}`, { stage: 'content' });
       return content === CONTENT_UNAVAILABLE ? { status: 'unavailable' } : { status: 'available', value: content };
     });
-    const analysis = {
-      markdownLinks: analyzeRepositoryMarkdownTargets({ documents, tree }),
-      npmScripts: analyzeReadmeNpmScripts({ documents }),
-    };
     const issues = await this.getIssues(repository, prefix);
+    const markdownLinks = analyzeRepositoryMarkdownTargets({ documents, tree });
+    const npmScripts = analyzeReadmeNpmScripts({ documents });
+    const labeledIssues = analyzeLabeledIssues({ repository, issues });
+    const combined = combineFindings(
+      markdownLinks.findings,
+      npmScripts.findings,
+      labeledIssues.findings,
+      markdownLinks.coverage.findingsOmitted + npmScripts.coverage.findingsOmitted,
+    );
+    const analysis = {
+      ...combined,
+      markdownLinks,
+      npmScripts,
+      labeledIssues,
+    };
     return { status: 'ready', snapshot: { defaultBranch: repository.defaultBranch, commitSha, treeSha, tree, documents, analysis }, issues };
   }
 

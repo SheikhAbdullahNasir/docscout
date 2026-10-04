@@ -53,7 +53,16 @@ describe('bounded labeled issue retrieval', () => {
     const result = await new GitHubClient({ fetcher }).getSnapshot(repository);
 
     expect(result).toMatchObject({
-      status: 'empty', snapshot: null, issues: { items: [{ number: 7 }], coverage: { complete: true } },
+      status: 'empty',
+      snapshot: null,
+      analysis: {
+        findings: [{ type: 'labeled-issue', evidence: { issueNumber: 7 } }],
+        labeledIssues: {
+          findings: [{ type: 'labeled-issue', evidence: { issueNumber: 7 } }],
+          coverage: { eligibleIssues: 1, findingsProduced: 1, findingsOmitted: 0 },
+        },
+      },
+      issues: { items: [{ number: 7 }], coverage: { complete: true } },
     });
     expect(fetcher).toHaveBeenCalledTimes(3);
   });
@@ -79,6 +88,40 @@ describe('bounded labeled issue retrieval', () => {
 
     expect(result).toMatchObject({
       status: 'ready',
+      snapshot: {
+        analysis: {
+          labeledIssues: {
+            findings: [
+              {
+                type: 'labeled-issue',
+                title: 'Maintainer-labeled good first issue',
+                confidence: 'maintainer-label',
+                difficulty: 'unknown',
+                evidence: {
+                  issueNumber: 11,
+                  sourceUrl: 'https://github.com/Canonical/Repo/issues/11',
+                  labels: ['good first issue', 'help wanted', 'docs'],
+                  assigned: false,
+                  excerpt: 'x'.repeat(500),
+                },
+                limitations: expect.arrayContaining([expect.stringMatching(/archived/i)]),
+              },
+              {
+                type: 'labeled-issue',
+                title: 'Maintainer-labeled help wanted issue',
+                evidence: { issueNumber: 13, assigned: true, assignees: ['octocat', 'hubot'] },
+                limitations: expect.arrayContaining([expect.stringMatching(/assigned/i), expect.stringMatching(/archived/i)]),
+              },
+            ],
+            coverage: {
+              eligibleIssues: 2,
+              findingsProduced: 2,
+              findingsOmitted: 0,
+              issueRetrieval: { complete: true, sampled: false },
+            },
+          },
+        },
+      },
       issues: {
         fetchedAt: '2026-10-03T12:00:00.000Z',
         items: [
@@ -114,6 +157,7 @@ describe('bounded labeled issue retrieval', () => {
       'https://api.github.com/repos/Canonical/Repo/issues?state=open&labels=good%20first%20issue&sort=updated&direction=desc&per_page=100&page=1',
       'https://api.github.com/repos/Canonical/Repo/issues?state=open&labels=help%20wanted&sort=updated&direction=desc&per_page=100&page=1',
     ]);
+    expect(fetcher).toHaveBeenCalledTimes(4);
   });
 
   it('describes empty label queries narrowly without claiming there are no beginner opportunities', async () => {

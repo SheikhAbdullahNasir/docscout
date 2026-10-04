@@ -8,6 +8,12 @@ const commitSha = 'a'.repeat(40);
 const treeSha = 'b'.repeat(40);
 const commit = { sha: commitSha, commit: { tree: { sha: treeSha } } };
 const input = { repositoryUrl: 'https://github.com/input/repo' };
+const emptyIssueCoverage = { complete: true, sampled: false, queries: [
+  { label: 'good first issue', status: 'complete', pagesFetched: 1, capped: false,
+    message: 'No matches were returned for the supported label query.' },
+  { label: 'help wanted', status: 'complete', pagesFetched: 1, capped: false,
+    message: 'No matches were returned for the supported label query.' },
+] };
 
 describe('snapshot endpoint', () => {
   it.each([false, true])('returns pinned data and explicit coverage; truncated=%s', async (truncated) => {
@@ -31,7 +37,9 @@ describe('snapshot endpoint', () => {
           : { status: 'unavailable', message: 'No root package.json was found.' },
         docs: [], skipped: [], omissions: [],
       },
-      analysis: { markdownLinks: {
+      analysis: { findings: [], coverage: {
+        documentationFindingsProduced: 0, documentationFindingsOmitted: 0, issueFindingsProduced: 0,
+      }, markdownLinks: {
         findings: [],
         coverage: {
           documentsAnalyzed: 0,
@@ -63,14 +71,15 @@ describe('snapshot endpoint', () => {
           status: 'skipped', skipReason: 'readme-unavailable', supportedCommandsChecked: 0,
           commandsSkipped: 0, findingsProduced: 0, findingsOmitted: 0,
         }),
+      }, labeledIssues: {
+        findings: [],
+        coverage: {
+          eligibleIssues: 0, findingsProduced: 0, findingsOmitted: 0,
+          issueRetrieval: emptyIssueCoverage, limitations: [],
+        },
       } },
     }, issues: {
-      fetchedAt: expect.any(String), items: [], coverage: { complete: true, sampled: false, queries: [
-        { label: 'good first issue', status: 'complete', pagesFetched: 1, capped: false,
-          message: 'No matches were returned for the supported label query.' },
-        { label: 'help wanted', status: 'complete', pagesFetched: 1, capped: false,
-          message: 'No matches were returned for the supported label query.' },
-      ] },
+      fetchedAt: expect.any(String), items: [], coverage: emptyIssueCoverage,
     } });
     expect(fetcher).toHaveBeenCalledTimes(5);
     expect(fetcher.mock.calls.every(([url]) => !/\/contents\//.test(String(url)))).toBe(true);
@@ -82,7 +91,11 @@ describe('snapshot endpoint', () => {
       .mockResolvedValueOnce(Response.json([])).mockResolvedValueOnce(Response.json([]));
     const response = await request(createApp({ github: new GitHubClient({ fetcher }) })).post('/api/repository/snapshot').send(input);
     expect(response.status).toBe(200);
-    expect(response.body).toMatchObject({ repository: { owner: 'Canonical', defaultBranch: 'release/docs' }, status: 'empty', snapshot: null, message: expect.any(String) });
+    expect(response.body).toMatchObject({
+      repository: { owner: 'Canonical', defaultBranch: 'release/docs' },
+      status: 'empty', snapshot: null, message: expect.any(String),
+      analysis: { findings: [], labeledIssues: { findings: [], coverage: { eligibleIssues: 0 } } },
+    });
     expect(response.body).toMatchObject({ issues: { items: [], coverage: { complete: true } } });
     expect(fetcher).toHaveBeenCalledTimes(4);
   });

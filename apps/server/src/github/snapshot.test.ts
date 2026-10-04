@@ -34,6 +34,16 @@ const emptyIssues = {
       message: 'No matches were returned for the supported label query.' },
   ] },
 };
+const emptyLabeledIssues = {
+  findings: [],
+  coverage: {
+    eligibleIssues: 0,
+    findingsProduced: 0,
+    findingsOmitted: 0,
+    issueRetrieval: emptyIssues.coverage,
+    limitations: [],
+  },
+};
 
 describe('default-branch snapshot', () => {
   it.each(['main', 'develop', 'release/docs', 'topic/#percent%'])('pins actual branch %s to commit and recursive tree', async (defaultBranch) => {
@@ -44,13 +54,15 @@ describe('default-branch snapshot', () => {
       defaultBranch, commitSha, treeSha,
       tree: { entries: entries.map(({ url: _url, ...entry }) => { void _url; return entry; }), truncated: false, complete: true },
       documents: missingDocuments,
-      analysis: { markdownLinks: { findings: [], coverage: expect.objectContaining({
+      analysis: { findings: [], coverage: {
+        documentationFindingsProduced: 0, documentationFindingsOmitted: 0, issueFindingsProduced: 0,
+      }, markdownLinks: { findings: [], coverage: expect.objectContaining({
         documentsAnalyzed: 0, supportedLinksChecked: 0, uncheckedLinks: 0,
         unsupportedLinks: 0, findingsProduced: 0,
       }) }, npmScripts: { findings: [], coverage: expect.objectContaining({
         status: 'skipped', skipReason: 'readme-unavailable', supportedCommandsChecked: 0,
         commandsSkipped: 0, findingsProduced: 0, findingsOmitted: 0,
-      }) } },
+      }) }, labeledIssues: emptyLabeledIssues },
     }, issues: emptyIssues });
     expect(fetcher.mock.calls.map(([url]) => url)).toEqual([
       `https://api.github.com/repos/Canonical/Repo/commits/${encodeURIComponent(defaultBranch)}`,
@@ -81,7 +93,13 @@ describe('default-branch snapshot', () => {
     const fetcher = vi.fn<typeof fetch>().mockResolvedValueOnce(Response.json({ message: 'Git Repository is empty.' }, { status: 409 }))
       .mockResolvedValueOnce(Response.json([])).mockResolvedValueOnce(Response.json([]));
     expect(await new GitHubClient({ fetcher }).getSnapshot(repository)).toEqual({ status: 'empty', snapshot: null,
-      message: 'This repository has no commit snapshot or files to scan yet.', issues: emptyIssues });
+      message: 'This repository has no commit snapshot or files to scan yet.', issues: emptyIssues,
+      analysis: {
+        findings: [],
+        coverage: { documentationFindingsProduced: 0, documentationFindingsOmitted: 0, issueFindingsProduced: 0 },
+        labeledIssues: emptyLabeledIssues,
+      },
+    });
     expect(fetcher).toHaveBeenCalledTimes(3);
   });
 
