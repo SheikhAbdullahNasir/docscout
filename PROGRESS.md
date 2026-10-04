@@ -207,6 +207,44 @@ Independent review found no Critical issues. It identified false-absence edge ca
 
 Phase 1 acceptance gate: **passed** — “Fixture and public-repo smoke test display README/guidance/issues; absence/errors are readable.” Offline fixtures display available README, guidance, and issues; the public smoke displays the optional resources actually returned; absence, partial coverage, and representative errors are readable. Phase 1E implementation commit: `55a8762` (`feat: complete Phase 1 browser integration`). No push or pull request was requested or attempted.
 
+## Phase 2A — repository-relative Markdown target analysis (October 4, 2026)
+
+- Added one pure deterministic analyzer over already-fetched Phase 1 evidence. It accepts selected available Markdown documents plus the pinned recursive tree and performs no GitHub calls, URL fetches, filesystem reads, repository execution, or writes.
+- Added `remark-parse`/`unified` AST parsing with retained source lines. Ordinary inline links and resolved reference-style links are checked; fenced and inline code are not interpreted as links. Undefined full/collapsed references are recovered from AST-bounded source ranges and reported unchecked rather than treated as missing.
+- Resolves ordinary targets from the source document directory and leading-slash targets from repository root using POSIX semantics only. Query and fragment components are removed before lookup, safe URL decoding occurs exactly once, path segments are normalized, and exact Git-tree case is preserved. Known tree directories and the repository root count as existing targets.
+- Rejects root escape, backslashes, NUL/C0/DEL controls, encoded separators, invalid/double-suspicious encodings, and destinations that decode into URI schemes. These remain unsupported and cannot produce missing-target findings. HTTP(S), protocol-relative, mail, pure-anchor, other-scheme, and image targets are also unsupported; no external URL is fetched.
+- A relative path plus fragment checks only the repository path. Its heading anchor is separately recorded as unchecked. Query behavior is not interpreted. Explanatory limitations require manual verification of generated documentation, site/router paths, build-time behavior, and other project conventions.
+- Missing-target findings require `tree.complete: true`. Incomplete trees can confirm observed existing targets but absence becomes unchecked and can never emit a finding. Findings are deduplicated by type + source path + normalized target, use stable SHA-256-derived IDs, retain pinned source URL/line/bounded evidence/original and normalized targets, and use only high-confidence snapshot-absence wording with difficulty `unknown`.
+- Coverage records documents analyzed/unchecked, supported file targets checked, unchecked links and reasons, unsupported links and categories, findings produced, and findings omitted. Findings are capped at 50 with explicit omissions. Documents with more than 1,000 potential link openers are left unchecked before synchronous AST parsing, with typed coverage and a limitation, so pathological untrusted Markdown cannot block the server through link-dense parsing.
+- Attached the typed analysis result to ready snapshot responses. Empty repositories retain their existing null snapshot behavior. The browser does not present findings in Phase 2A, but its runtime response guard validates the new analysis contract. No Phase 3 result-card or filter work was added.
+- Updated Playwright startup orchestration to wait independently for a built backend health endpoint and Vite. This fixes a reproducible proxy race exposed by the larger server module graph; the shipped compiled server is now exercised by E2E setup.
+
+### Supported and intentionally unchecked categories
+
+- Checked: ordinary inline Markdown links and resolved full/collapsed/shortcut reference links whose destinations are safe repository-relative paths.
+- Unchecked: supported relative targets absent from an incomplete tree, heading-anchor portions after a checked file path, unresolved explicit full/collapsed references, and documents skipped by the parser-safety admission bound.
+- Unsupported: images, HTTP(S), protocol-relative URLs, `mailto:`, pure anchors, other URI schemes, unsafe traversal, backslashes, encoded separators, invalid encodings, decoded controls, and other suspicious destinations. Undefined shortcut-like bracket text is left as ordinary Markdown text because CommonMark does not distinguish it from prose without a matching definition.
+
+### Phase 2A verification
+
+| Command/check | Actual result |
+|---|---|
+| Focused red/green analyzer tests | Passed after observing required failures for the missing module, incomplete integration, encoded external scheme, output cap, formatted unresolved references, fragment coverage, query stripping, deep AST traversal, CR-only evidence, escaped syntax, interval-scan performance, and parser-safety admission |
+| `npm run lint` | Passed on the final tree |
+| `npm run typecheck` | Passed across all three workspaces on the final tree |
+| `npm test` | Passed: 212 tests across 10 suites; 25 focused Phase 2A analyzer tests and all 187 Phase 0/1 regressions |
+| `npm run build` | Passed: Vite frontend and TypeScript server builds |
+| `npm run test:production` | Passed: health, frontend HTML, built JS/CSS assets, unknown API 404 |
+| `npm run test:e2e` | Passed: all 11 Chromium tests after the backend-readiness race was diagnosed and fixed |
+| Diff/secret review | Passed: scoped source/tests/configuration and lockfile only; matches for `secret`/`token` were intentional safe-error test sentinels |
+| Independent review | Passed after fixes; final review found no current issue and approved the full verification gate |
+
+Offline fixtures cover existing/missing files, complete versus truncated trees, inline/code/reference syntax, nested `../` and root-relative resolution, fragments, queries, directories, exact case, generated/router-style paths, deduplication, output/evidence bounds, external and unsupported categories, traversal/backslash/NUL/control/encoded-separator/invalid-encoding security cases, decoded external schemes, deeply nested ASTs, CR-only lines, escaped reference markers, mixed parsed/unresolved reference volume, and pathological parser-density admission. Analyzer correctness does not depend on a live public repository.
+
+The first two full E2E attempts returned one 502 for the initial health-proxy request while the other ten tests passed. Debug logging proved Playwright was declaring Vite ready before port 3001 was listening; standalone `tsx watch` startup also exceeded the old 30-second readiness window. Playwright now builds/starts the compiled server separately and waits for `/api/health`; the focused regression and final 11-test suite passed. Existing `NO_COLOR`/`FORCE_COLOR` warnings remain harmless.
+
+No live-repository smoke was run because controlled fixtures provide the required deterministic analyzer evidence and the user made a live finding optional. No check remains blocked. No push or pull request was requested or attempted. Phase 2A implementation commit: `1e795f1` (`feat: add Phase 2A local Markdown target analysis`).
+
 ## Remaining work
 
-Stop after the verified Phase 1 gate. The recommended next step is Phase 2A: implement only the missing repository-relative documentation target analyzer from the approved specification, with evidence and truncated-tree safeguards. Do not combine that work with issue ranking, Phase 3 result cards/filters, full reliability infrastructure, AI, or deployment. AI remains disabled; no billable AI call, cloning, repository code execution, write to an analyzed repository, or public deployment occurred.
+Stop after this verified Phase 2A checkpoint. The recommended next step is a separately scoped Phase 2B task for deterministic npm-script analysis. Do not combine it with issue opportunity findings/Phase 2C, ranking, Phase 3 presentation, external-link or heading-anchor validation, AI, cloning, repository execution, GitHub writes, databases, or background application agents. AI remains disabled and no billable AI call occurred.
