@@ -11,7 +11,7 @@ Approved source: `PROJECT_SPEC.md` version 1.0. Updated October 4, 2026.
   - [x] Phase 1C — deterministic selected-document paths and bounded pinned content retrieval.
   - [x] Phase 1D — bounded open labeled-issue retrieval with explicit coverage.
   - [x] Phase 1E — minimal browser integration for repository metadata, pinned documents, labeled issues, and truthful states.
-- [ ] Phase 2 — evidence-backed core analyzers.
+- [x] Phase 2 — evidence-backed core analyzers; completion gate passed October 5, 2026.
 - [ ] Phase 3 — usable results and complete UI states.
 - [ ] Phase 4 — reliable core, security limits, fixtures, and CI.
 - [ ] Phase 5 — optional AI; not requested, disabled.
@@ -310,3 +310,7 @@ The first combined sandboxed Vitest runs encountered the known transient Windows
 ## Remaining work
 
 Stop after this verified Phase 2C checkpoint. The recommended next step is a separately scoped Phase 3 task for deterministic result presentation using the existing typed findings and coverage. Do not begin presentation redesign, filters, copy-next-steps UI, AI explanation, difficulty estimation, external-link or heading-anchor validation, cloning, repository execution, GitHub writes, databases, or background application agents without a new task. AI remains disabled and no billable AI call occurred.
+
+## Phase 2 completion gate (October 5, 2026)
+
+Phase 2 is complete. A lightweight acceptance review confirmed that all three analyzers still match the Phase 2 contract, documented false-positive controls remain covered by focused tests, documentation findings remain before issue findings, and documentation/issue caps and coverage remain truthful. The analyzers remain pure over fetched evidence: no GitHub fetching, filesystem access, command execution, or AI work was found. Focused verification passed with 124 tests across four suites; `npm run typecheck` and `npm run lint` also passed. No acceptance gap or code change was required.
