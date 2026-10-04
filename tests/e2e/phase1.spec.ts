@@ -70,6 +70,27 @@ const analysis = {
       limitations: [],
     },
   },
+  npmScripts: {
+    findings: [],
+    coverage: {
+      status: 'skipped' as const,
+      skipReason: 'manifest-unavailable' as const,
+      supportedCommandsChecked: 0,
+      commandsSkipped: 0,
+      findingsProduced: 0,
+      findingsOmitted: 0,
+      skippedByReason: {
+        unsupportedBlock: 0,
+        unsupportedCommand: 0,
+        ambiguousShell: 0,
+        ifPresent: 0,
+        workspace: 0,
+        nonRootWorkingDirectory: 0,
+        uncertainWorkingDirectory: 0,
+      },
+      limitations: [],
+    },
+  },
 };
 
 const successResponse = {
@@ -346,6 +367,25 @@ test('shows a safe error when a successful response omits required Phase 2A anal
   const malformedResponse = {
     ...emptyResponse,
     snapshot: { ...emptyResponse.snapshot, analysis: undefined },
+  };
+  await page.route('**/api/repository/snapshot', (route) => route.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify(malformedResponse),
+  }));
+  await page.goto('/');
+  await submit(page);
+
+  await expect(page.getByRole('alert')).toContainText('Repository analysis returned an invalid response. Please try again later.');
+});
+
+test('shows a safe error when a successful response omits required Phase 2B analysis', async ({ page }) => {
+  const malformedResponse = {
+    ...emptyResponse,
+    snapshot: {
+      ...emptyResponse.snapshot,
+      analysis: { markdownLinks: emptyResponse.snapshot.analysis.markdownLinks },
+    },
   };
   await page.route('**/api/repository/snapshot', (route) => route.fulfill({
     status: 200,

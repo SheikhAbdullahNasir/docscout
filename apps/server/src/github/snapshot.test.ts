@@ -47,6 +47,9 @@ describe('default-branch snapshot', () => {
       analysis: { markdownLinks: { findings: [], coverage: expect.objectContaining({
         documentsAnalyzed: 0, supportedLinksChecked: 0, uncheckedLinks: 0,
         unsupportedLinks: 0, findingsProduced: 0,
+      }) }, npmScripts: { findings: [], coverage: expect.objectContaining({
+        status: 'skipped', skipReason: 'readme-unavailable', supportedCommandsChecked: 0,
+        commandsSkipped: 0, findingsProduced: 0, findingsOmitted: 0,
       }) } },
     }, issues: emptyIssues });
     expect(fetcher.mock.calls.map(([url]) => url)).toEqual([

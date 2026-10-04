@@ -57,6 +57,12 @@ describe('snapshot endpoint', () => {
             'A selected document with more than 1,000 potential link openers is left unchecked to keep untrusted Markdown parsing bounded.',
           ],
         },
+      }, npmScripts: {
+        findings: [],
+        coverage: expect.objectContaining({
+          status: 'skipped', skipReason: 'readme-unavailable', supportedCommandsChecked: 0,
+          commandsSkipped: 0, findingsProduced: 0, findingsOmitted: 0,
+        }),
       } },
     }, issues: {
       fetchedAt: expect.any(String), items: [], coverage: { complete: true, sampled: false, queries: [

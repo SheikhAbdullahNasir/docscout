@@ -110,6 +110,49 @@ export type RepositoryMarkdownLinkAnalysis = {
   };
 };
 
+export type PossibleMissingNpmScriptFinding = {
+  id: string;
+  type: 'possible-missing-npm-script';
+  title: string;
+  confidence: 'needs-review';
+  difficulty: 'unknown';
+  evidence: {
+    sourceDocumentPath: string;
+    sourceUrl: string;
+    sourceLine: number;
+    excerpt: string;
+    command: string;
+    script: string;
+    manifestPath: 'package.json';
+  };
+  whyItMatters: string;
+  verificationSteps: string[];
+  limitations: string[];
+};
+
+export type RepositoryNpmScriptAnalysis = {
+  findings: PossibleMissingNpmScriptFinding[];
+  coverage: {
+    status: 'checked' | 'skipped';
+    skipReason?: 'readme-unavailable' | 'manifest-unavailable' | 'manifest-invalid-json'
+      | 'manifest-not-object' | 'scripts-missing' | 'scripts-invalid';
+    supportedCommandsChecked: number;
+    commandsSkipped: number;
+    findingsProduced: number;
+    findingsOmitted: number;
+    skippedByReason: {
+      unsupportedBlock: number;
+      unsupportedCommand: number;
+      ambiguousShell: number;
+      ifPresent: number;
+      workspace: number;
+      nonRootWorkingDirectory: number;
+      uncertainWorkingDirectory: number;
+    };
+    limitations: string[];
+  };
+};
+
 export type SupportedIssueLabel = 'good first issue' | 'help wanted';
 
 export type RepositoryIssue = {
@@ -148,7 +191,10 @@ export type RepositorySnapshotResult =
     treeSha: string;
     tree: { entries: RepositoryTreeEntry[]; truncated: boolean; complete: boolean };
     documents: RepositoryDocuments;
-    analysis: { markdownLinks: RepositoryMarkdownLinkAnalysis };
+    analysis: {
+      markdownLinks: RepositoryMarkdownLinkAnalysis;
+      npmScripts: RepositoryNpmScriptAnalysis;
+    };
   }; issues: RepositoryIssues }
   | { status: 'empty'; snapshot: null; message: string; issues: RepositoryIssues };
 

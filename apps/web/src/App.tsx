@@ -60,6 +60,39 @@ function isMarkdownLinkAnalysis(value: unknown): boolean {
     && isStringArray(coverage.limitations);
 }
 
+function isNpmScriptAnalysis(value: unknown): boolean {
+  if (!isRecord(value) || !Array.isArray(value.findings) || !isRecord(value.coverage)) return false;
+  const findings = value.findings.every((finding) => isRecord(finding)
+    && typeof finding.id === 'string' && finding.type === 'possible-missing-npm-script'
+    && typeof finding.title === 'string' && finding.confidence === 'needs-review'
+    && finding.difficulty === 'unknown' && isRecord(finding.evidence)
+    && typeof finding.evidence.sourceDocumentPath === 'string'
+    && typeof finding.evidence.sourceUrl === 'string'
+    && isCount(finding.evidence.sourceLine) && finding.evidence.sourceLine > 0
+    && typeof finding.evidence.excerpt === 'string'
+    && typeof finding.evidence.command === 'string'
+    && typeof finding.evidence.script === 'string'
+    && finding.evidence.manifestPath === 'package.json'
+    && typeof finding.whyItMatters === 'string'
+    && isStringArray(finding.verificationSteps) && isStringArray(finding.limitations));
+  const coverage = value.coverage;
+  const skipReasons = [
+    'readme-unavailable', 'manifest-unavailable', 'manifest-invalid-json',
+    'manifest-not-object', 'scripts-missing', 'scripts-invalid',
+  ];
+  const skipped = coverage.skippedByReason;
+  return findings && (coverage.status === 'checked' || coverage.status === 'skipped')
+    && (coverage.status === 'checked'
+      ? coverage.skipReason === undefined
+      : typeof coverage.skipReason === 'string' && skipReasons.includes(coverage.skipReason))
+    && ['supportedCommandsChecked', 'commandsSkipped', 'findingsProduced', 'findingsOmitted']
+      .every((key) => isCount(coverage[key]))
+    && isRecord(skipped)
+    && ['unsupportedBlock', 'unsupportedCommand', 'ambiguousShell', 'ifPresent', 'workspace',
+      'nonRootWorkingDirectory', 'uncertainWorkingDirectory'].every((key) => isCount(skipped[key]))
+    && isStringArray(coverage.limitations);
+}
+
 function isSnapshotResponse(value: unknown): value is RepositorySnapshotResponse {
   if (!isRecord(value) || value.schemaVersion !== 1 || (value.status !== 'ready' && value.status !== 'empty')) return false;
   const repository = value.repository;
@@ -84,7 +117,8 @@ function isSnapshotResponse(value: unknown): value is RepositorySnapshotResponse
   if (!isRecord(value.snapshot) || typeof value.snapshot.commitSha !== 'string'
     || !isRecord(value.snapshot.tree) || typeof value.snapshot.tree.complete !== 'boolean'
     || !isRecord(value.snapshot.documents) || !isRecord(value.snapshot.analysis)
-    || !isMarkdownLinkAnalysis(value.snapshot.analysis.markdownLinks)) return false;
+    || !isMarkdownLinkAnalysis(value.snapshot.analysis.markdownLinks)
+    || !isNpmScriptAnalysis(value.snapshot.analysis.npmScripts)) return false;
   const documents = value.snapshot.documents;
   return typeof documents.selectionComplete === 'boolean'
     && isDocumentState(documents.readme) && isDocumentState(documents.contributing)

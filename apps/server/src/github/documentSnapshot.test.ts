@@ -30,22 +30,42 @@ function fetchFor(entries: RepositoryTreeEntry[], responses: Response[] = [], tr
 
 describe('pinned selected repository documents', () => {
   it('fetches selected files from fixed Contents API paths at the exact commit and returns pinned source URLs', async () => {
+    const readmeText = '# Read me\n\n```bash\nnpm run preview\n```';
     const selected = [
-      blob('ReadMe.MD', '# Read me'), blob('.github/CONTRIBUTING.md', 'Please help'),
+      blob('ReadMe.MD', readmeText), blob('.github/CONTRIBUTING.md', 'Please help'),
       blob('package.json', '{"scripts":{}}'), blob('docs/Guide #1.md', '# Guide'),
     ];
-    const fetcher = fetchFor(selected, selected.map((entry, index) => Response.json(contents(entry.path, ['# Read me', 'Please help', '{"scripts":{}}', '# Guide'][index]))));
+    const fetcher = fetchFor(selected, selected.map((entry, index) => Response.json(contents(entry.path, [readmeText, 'Please help', '{"scripts":{}}', '# Guide'][index]))));
 
     const result = await new GitHubClient({ fetcher }).getSnapshot(repository);
 
     expect(result).toMatchObject({ status: 'ready', snapshot: {
       commitSha, tree: { complete: true, truncated: false },
       documents: {
-        readme: { status: 'available', document: { path: 'ReadMe.MD', category: 'readme', text: '# Read me', sha: blobSha } },
+        readme: { status: 'available', document: { path: 'ReadMe.MD', category: 'readme', text: readmeText, sha: blobSha } },
         contributing: { status: 'available', document: { path: '.github/CONTRIBUTING.md', category: 'contributing', text: 'Please help' } },
         packageJson: { status: 'available', document: { path: 'package.json', category: 'package-json', text: '{"scripts":{}}' } },
         docs: [{ path: 'docs/Guide #1.md', category: 'docs', text: '# Guide' }],
         skipped: [], omissions: [],
+      },
+      analysis: {
+        markdownLinks: { findings: [] },
+        npmScripts: {
+          findings: [{
+            type: 'possible-missing-npm-script',
+            confidence: 'needs-review',
+            difficulty: 'unknown',
+            evidence: {
+              sourceDocumentPath: 'ReadMe.MD',
+              sourceUrl: `https://github.com/Canonical/Repo/blob/${commitSha}/ReadMe.MD`,
+              sourceLine: 4,
+              command: 'npm run preview',
+              script: 'preview',
+              manifestPath: 'package.json',
+            },
+          }],
+          coverage: { status: 'checked', supportedCommandsChecked: 1, findingsProduced: 1 },
+        },
       },
     } });
     expect(result.status === 'ready' && result.snapshot.documents.readme.status === 'available'
