@@ -31,6 +31,33 @@ describe('snapshot endpoint', () => {
           : { status: 'unavailable', message: 'No root package.json was found.' },
         docs: [], skipped: [], omissions: [],
       },
+      analysis: { markdownLinks: {
+        findings: [],
+        coverage: {
+          documentsAnalyzed: 0,
+          documentsUnchecked: 0,
+          supportedLinksChecked: 0,
+          uncheckedLinks: 0,
+          unsupportedLinks: 0,
+          findingsProduced: 0,
+          findingsOmitted: 0,
+          uncheckedByReason: { incompleteTree: 0, unresolvedReference: 0, fragmentAnchor: 0 },
+          uncheckedDocumentsByReason: { parserSafetyLimit: 0 },
+          unsupportedByReason: {
+            images: 0, external: 0, protocolRelative: 0, mailto: 0,
+            pureAnchor: 0, otherScheme: 0, suspiciousTarget: 0,
+          },
+          limitations: [
+            'Image targets are unsupported and are not checked.',
+            'External URLs, protocol-relative URLs, mail links, pure anchors, other URI schemes, unresolved references, and suspicious encodings are not checked.',
+            'Query strings are removed before repository-path lookup; application or router query behavior is not interpreted.',
+            'Fragments are removed before repository-path lookup; heading anchors are not verified.',
+            'Missing-target findings require a complete recursive repository tree.',
+            'Documentation findings are limited to the first 50 deterministic observations; additional unique observations are counted as omitted.',
+            'A selected document with more than 1,000 potential link openers is left unchecked to keep untrusted Markdown parsing bounded.',
+          ],
+        },
+      } },
     }, issues: {
       fetchedAt: expect.any(String), items: [], coverage: { complete: true, sampled: false, queries: [
         { label: 'good first issue', status: 'complete', pagesFetched: 1, capped: false,

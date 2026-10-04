@@ -45,6 +45,33 @@ const issues = {
   },
 };
 
+const analysis = {
+  markdownLinks: {
+    findings: [],
+    coverage: {
+      documentsAnalyzed: 0,
+      documentsUnchecked: 0,
+      supportedLinksChecked: 0,
+      uncheckedLinks: 0,
+      unsupportedLinks: 0,
+      findingsProduced: 0,
+      findingsOmitted: 0,
+      uncheckedByReason: { incompleteTree: 0, unresolvedReference: 0, fragmentAnchor: 0 },
+      uncheckedDocumentsByReason: { parserSafetyLimit: 0 },
+      unsupportedByReason: {
+        images: 0,
+        external: 0,
+        protocolRelative: 0,
+        mailto: 0,
+        pureAnchor: 0,
+        otherScheme: 0,
+        suspiciousTarget: 0,
+      },
+      limitations: [],
+    },
+  },
+};
+
 const successResponse = {
   schemaVersion: 1 as const,
   repository,
@@ -85,6 +112,7 @@ const successResponse = {
       skipped: [{ path: 'docs/large.md', category: 'docs' as const, reason: 'oversized' as const }],
       omissions: ['docs-limit' as const],
     },
+    analysis,
   },
   issues,
 };
@@ -110,6 +138,7 @@ const emptyResponse = {
       skipped: [],
       omissions: [],
     },
+    analysis,
   },
   issues: {
     fetchedAt: '2026-10-04T06:30:00.000Z',
@@ -313,11 +342,15 @@ test('shows a safe server error without exposing internal fields', async ({ page
   await expect(page.getByText('secret token')).toHaveCount(0);
 });
 
-test('shows a safe error for a malformed successful response', async ({ page }) => {
+test('shows a safe error when a successful response omits required Phase 2A analysis', async ({ page }) => {
+  const malformedResponse = {
+    ...emptyResponse,
+    snapshot: { ...emptyResponse.snapshot, analysis: undefined },
+  };
   await page.route('**/api/repository/snapshot', (route) => route.fulfill({
     status: 200,
     contentType: 'application/json',
-    body: JSON.stringify({ schemaVersion: 1, status: 'ready' }),
+    body: JSON.stringify(malformedResponse),
   }));
   await page.goto('/');
   await submit(page);

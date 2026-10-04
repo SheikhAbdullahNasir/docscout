@@ -16,6 +16,7 @@ type ScanState =
 const repositoryPattern = /^https:\/\/github\.com\/[A-Za-z0-9-]+\/[A-Za-z0-9_.-]+\/?$/;
 const isRecord = (value: unknown): value is Record<string, unknown> => Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 const isStringArray = (value: unknown): value is string[] => Array.isArray(value) && value.every((item) => typeof item === 'string');
+const isCount = (value: unknown): value is number => typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
 
 function isDocumentState(value: unknown): value is RepositoryDocumentState {
   if (!isRecord(value) || typeof value.status !== 'string') return false;
@@ -24,6 +25,39 @@ function isDocumentState(value: unknown): value is RepositoryDocumentState {
   return typeof value.document.path === 'string'
     && typeof value.document.sourceUrl === 'string'
     && typeof value.document.text === 'string';
+}
+
+function isMarkdownLinkAnalysis(value: unknown): boolean {
+  if (!isRecord(value) || !Array.isArray(value.findings) || !isRecord(value.coverage)) return false;
+  const findings = value.findings.every((finding) => isRecord(finding)
+    && typeof finding.id === 'string' && finding.type === 'missing-local-target'
+    && typeof finding.title === 'string'
+    && finding.observation === 'Target is absent from the scanned repository snapshot.'
+    && finding.confidence === 'high' && finding.difficulty === 'unknown'
+    && isRecord(finding.evidence)
+    && typeof finding.evidence.sourceDocumentPath === 'string'
+    && typeof finding.evidence.sourceUrl === 'string'
+    && isCount(finding.evidence.sourceLine) && finding.evidence.sourceLine > 0
+    && typeof finding.evidence.excerpt === 'string'
+    && typeof finding.evidence.linkText === 'string'
+    && typeof finding.evidence.originalTarget === 'string'
+    && typeof finding.evidence.normalizedTarget === 'string'
+    && typeof finding.whyItMatters === 'string'
+    && isStringArray(finding.verificationSteps) && isStringArray(finding.limitations));
+  const coverage = value.coverage;
+  const unchecked = coverage.uncheckedByReason;
+  const unsupported = coverage.unsupportedByReason;
+  return findings
+    && ['documentsAnalyzed', 'documentsUnchecked', 'supportedLinksChecked', 'uncheckedLinks', 'unsupportedLinks', 'findingsProduced', 'findingsOmitted']
+      .every((key) => isCount(coverage[key]))
+    && isRecord(unchecked) && isCount(unchecked.incompleteTree)
+    && isCount(unchecked.unresolvedReference) && isCount(unchecked.fragmentAnchor)
+    && isRecord(coverage.uncheckedDocumentsByReason)
+    && isCount(coverage.uncheckedDocumentsByReason.parserSafetyLimit)
+    && isRecord(unsupported)
+    && ['images', 'external', 'protocolRelative', 'mailto', 'pureAnchor', 'otherScheme', 'suspiciousTarget']
+      .every((key) => isCount(unsupported[key]))
+    && isStringArray(coverage.limitations);
 }
 
 function isSnapshotResponse(value: unknown): value is RepositorySnapshotResponse {
@@ -49,7 +83,8 @@ function isSnapshotResponse(value: unknown): value is RepositorySnapshotResponse
   if (value.status === 'empty') return value.snapshot === null && typeof value.message === 'string';
   if (!isRecord(value.snapshot) || typeof value.snapshot.commitSha !== 'string'
     || !isRecord(value.snapshot.tree) || typeof value.snapshot.tree.complete !== 'boolean'
-    || !isRecord(value.snapshot.documents)) return false;
+    || !isRecord(value.snapshot.documents) || !isRecord(value.snapshot.analysis)
+    || !isMarkdownLinkAnalysis(value.snapshot.analysis.markdownLinks)) return false;
   const documents = value.snapshot.documents;
   return typeof documents.selectionComplete === 'boolean'
     && isDocumentState(documents.readme) && isDocumentState(documents.contributing)

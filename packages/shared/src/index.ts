@@ -58,6 +58,58 @@ export type RepositoryDocuments = {
   omissions: Array<'docs-limit' | 'combined-content-limit'>;
 };
 
+export type MissingLocalTargetFinding = {
+  id: string;
+  type: 'missing-local-target';
+  title: string;
+  observation: 'Target is absent from the scanned repository snapshot.';
+  confidence: 'high';
+  difficulty: 'unknown';
+  evidence: {
+    sourceDocumentPath: string;
+    sourceUrl: string;
+    sourceLine: number;
+    excerpt: string;
+    linkText: string;
+    originalTarget: string;
+    normalizedTarget: string;
+  };
+  whyItMatters: string;
+  verificationSteps: string[];
+  limitations: string[];
+};
+
+export type RepositoryMarkdownLinkAnalysis = {
+  findings: MissingLocalTargetFinding[];
+  coverage: {
+    documentsAnalyzed: number;
+    documentsUnchecked: number;
+    supportedLinksChecked: number;
+    uncheckedLinks: number;
+    unsupportedLinks: number;
+    findingsProduced: number;
+    findingsOmitted: number;
+    uncheckedByReason: {
+      incompleteTree: number;
+      unresolvedReference: number;
+      fragmentAnchor: number;
+    };
+    uncheckedDocumentsByReason: {
+      parserSafetyLimit: number;
+    };
+    unsupportedByReason: {
+      images: number;
+      external: number;
+      protocolRelative: number;
+      mailto: number;
+      pureAnchor: number;
+      otherScheme: number;
+      suspiciousTarget: number;
+    };
+    limitations: string[];
+  };
+};
+
 export type SupportedIssueLabel = 'good first issue' | 'help wanted';
 
 export type RepositoryIssue = {
@@ -96,6 +148,7 @@ export type RepositorySnapshotResult =
     treeSha: string;
     tree: { entries: RepositoryTreeEntry[]; truncated: boolean; complete: boolean };
     documents: RepositoryDocuments;
+    analysis: { markdownLinks: RepositoryMarkdownLinkAnalysis };
   }; issues: RepositoryIssues }
   | { status: 'empty'; snapshot: null; message: string; issues: RepositoryIssues };
 

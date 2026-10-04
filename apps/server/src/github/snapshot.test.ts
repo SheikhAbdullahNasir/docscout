@@ -44,6 +44,10 @@ describe('default-branch snapshot', () => {
       defaultBranch, commitSha, treeSha,
       tree: { entries: entries.map(({ url: _url, ...entry }) => { void _url; return entry; }), truncated: false, complete: true },
       documents: missingDocuments,
+      analysis: { markdownLinks: { findings: [], coverage: expect.objectContaining({
+        documentsAnalyzed: 0, supportedLinksChecked: 0, uncheckedLinks: 0,
+        unsupportedLinks: 0, findingsProduced: 0,
+      }) } },
     }, issues: emptyIssues });
     expect(fetcher.mock.calls.map(([url]) => url)).toEqual([
       `https://api.github.com/repos/Canonical/Repo/commits/${encodeURIComponent(defaultBranch)}`,

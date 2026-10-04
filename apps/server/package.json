@@ -12,6 +12,8 @@
   "dependencies": {
     "@docscout/shared": "*",
     "dotenv": "^18.0.5",
-    "express": "^5.2.1"
+    "express": "^5.2.1",
+    "remark-parse": "^11.0.0",
+    "unified": "^11.0.5"
   }
 }

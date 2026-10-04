@@ -1,5 +1,6 @@
 import type { PublicRepositoryMetadata, RepositorySnapshotResult } from '@docscout/shared';
 import { ApplicationError } from '../errors.js';
+import { analyzeRepositoryMarkdownTargets } from '../analyzers/localLinks.js';
 import { validOwner, validRepo, type ValidatedRepository } from '../security/repositoryUrl.js';
 import { retrieveDocuments, type DocumentCandidate } from './documents.js';
 import { retrieveIssues } from './issues.js';
@@ -108,8 +109,9 @@ export class GitHubClient {
       const content = await this.requestJson(`${prefix}/contents/${encodedPath}?ref=${encodeURIComponent(commitSha)}`, { stage: 'content' });
       return content === CONTENT_UNAVAILABLE ? { status: 'unavailable' } : { status: 'available', value: content };
     });
+    const analysis = { markdownLinks: analyzeRepositoryMarkdownTargets({ documents, tree }) };
     const issues = await this.getIssues(repository, prefix);
-    return { status: 'ready', snapshot: { defaultBranch: repository.defaultBranch, commitSha, treeSha, tree, documents }, issues };
+    return { status: 'ready', snapshot: { defaultBranch: repository.defaultBranch, commitSha, treeSha, tree, documents, analysis }, issues };
   }
 
   private async getIssues(repository: PublicRepositoryMetadata, prefix: string) {
