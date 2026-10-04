@@ -245,6 +245,38 @@ The first two full E2E attempts returned one 502 for the initial health-proxy re
 
 No live-repository smoke was run because controlled fixtures provide the required deterministic analyzer evidence and the user made a live finding optional. No check remains blocked. No push or pull request was requested or attempted. Phase 2A implementation commit: `1e795f1` (`feat: add Phase 2A local Markdown target analysis`).
 
+## Phase 2B — conservative root npm-script command analysis (October 4, 2026)
+
+- Added a second pure deterministic analyzer over already-fetched Phase 1 evidence. It reads only the selected root README and selected root `package.json`; it performs no GitHub calls, filesystem reads, package installation, command execution, npm invocation, or LLM call.
+- Parses the README with the existing `remark-parse`/`unified` AST stack and inspects fenced `bash`, `sh`, `shell`, `zsh`, `console`, `terminal`, `text`, and `txt` code blocks, including AST-positioned fences nested in blockquotes or list items. Prose, inline code, indented code, and other fenced languages are not interpreted as commands.
+- Recognizes only explicit standalone `npm run NAME` and `npm run-script NAME` forms. Ordinary trailing values are allowed, and arguments after npm's `--` delimiter remain script arguments. Script names are compared exactly and case-sensitively against own properties of the root `package.json.scripts` object; no aliases, fuzzy matches, inferred replacements, nested manifests, or workspace manifests are used.
+- Skips `npm test`, `npm start`, installation commands, yarn/pnpm/Bun commands, shell prompts, comments, chained commands, pipelines, redirects, substitutions, environment assignments, quotes requiring shell interpretation, here-documents, line continuations, conditional/control bodies, workspace flags/forms, `--if-present` forms/abbreviations, and unrecognized npm configuration flags before `--`.
+- Tracks simple lexical `cd` paths independently inside each supported code block. Root state resets for every block; deterministic relative moves away from root suppress comparison, and `cd ..` may resume comparison only when the tracked path returns exactly to root. Absolute/home/previous-directory paths, quoted or compound changes, `pushd`/`popd`, and compound shell lines that can change directory make the state uncertain and suppress subsequent comparison in that block.
+- Safely parses only a JSON object with an own, plain `scripts` object whose values are strings. Missing/unavailable README or manifest evidence, invalid JSON, non-object manifests, missing/invalid scripts objects, and link-dense README parser admission failures return stable typed skipped statuses with zero invented findings. Other analyzers continue independently.
+- Missing exact scripts produce only `needs-review` observations with difficulty `unknown`. Findings use stable SHA-256-derived IDs, deduplicate by type + README path + full script name, retain the first pinned README URL/path/line, bound displayed command/excerpt/script evidence to 240 characters, use deterministic newcomer-impact wording, and require manual inspection of surrounding README instructions, working-directory expectations, repository-local CONTRIBUTING guidance, monorepo/workspace structure, and maintainer intent.
+- Coverage records checked commands, skipped commands and reason categories, findings produced/omitted, analyzer status/skip reason, and deterministic limitations. Unique findings are capped at 50. Phase 2A and Phase 2B share the existing pre-parse limit of 1,000 Markdown link openers so either analyzer leaves pathological link-dense documents unchecked before synchronous AST parsing.
+- Integrated `npmScripts` beside `markdownLinks` in the existing typed snapshot analysis object. The browser runtime guard validates the Phase 2B response contract but does not render findings; Phase 3 cards, filters, and presentation work remain unimplemented.
+
+### Phase 2B verification
+
+| Command/check | Actual result |
+|---|---|
+| Focused red/green analyzer and integration tests | Passed after observing failures for the missing analyzer, snapshot integration, browser response validation, supported forms, ambiguity/working-directory safeguards, manifest trust states, bounds/deduplication, multiline shell context, compound directory changes, npm configuration flags, nested fences, and parser-safety admission |
+| `npm run lint` | Passed on the final tree |
+| `npm run typecheck` | Passed across all three workspaces on the final tree |
+| `npm test` | Passed: 294 tests across 11 suites; 82 focused Phase 2B analyzer tests and all earlier regressions |
+| `npm run build` | Passed: Vite frontend and TypeScript server builds |
+| `npm run test:production` | Passed: health, frontend HTML, built JS/CSS assets, unknown API 404 |
+| `npm run test:e2e` | Passed: all 12 Chromium tests, including the Phase 2B malformed-response contract regression |
+| Diff/secret review | Passed: scoped source/tests/contracts only, no generated build output, whitespace errors, or credential-like material staged |
+| Independent review | Found no Critical issues. Four Important parser/shell/npm-context issues and two in-scope evidence/fence gaps were reproduced with failing tests, fixed, and covered by the final green suite |
+
+Offline fixtures cover defined and missing exact scripts, `run-script`, ordinary trailing arguments and the `--` delimiter, every supported fence language, prose/inline/indented/unsupported blocks, comments, chains, pipelines, substitutions, redirects, environment assignments, prompts, `--if-present`, workspace flags, npm configuration flags, npm special commands, unsupported package managers, deterministic and uncertain working-directory transitions, per-block reset, root return, absent/malformed/non-object manifests, missing/invalid scripts objects, exact case, pinned line/source evidence, deduplication, output/evidence caps, nested fences, and parser-density admission. Analyzer correctness does not depend on a public repository containing a known mismatch.
+
+One initial combined focused run encountered the known transient Windows sandbox temporary-file `ENOENT`; the identical focused run and every final required command passed outside that sandbox. Playwright emitted the existing harmless `NO_COLOR`/`FORCE_COLOR` warnings. No required check was skipped or remains blocked. The optional live-repository smoke was not run because controlled offline fixtures establish analyzer correctness without depending on public repository content.
+
+Phase 2B implementation commits: `54dd5fe` (`feat: add Phase 2B npm script analysis`) and `0637e43` (`fix: harden Phase 2B command parsing`). No push or pull request was requested or attempted. This documentation follow-up records the verified local checkpoint.
+
 ## Remaining work
 
-Stop after this verified Phase 2A checkpoint. The recommended next step is a separately scoped Phase 2B task for deterministic npm-script analysis. Do not combine it with issue opportunity findings/Phase 2C, ranking, Phase 3 presentation, external-link or heading-anchor validation, AI, cloning, repository execution, GitHub writes, databases, or background application agents. AI remains disabled and no billable AI call occurred.
+Stop after this verified Phase 2B checkpoint. The recommended next step is a separately scoped Phase 2C task for deterministic labeled-issue opportunity findings. Do not combine it with Phase 3 presentation, ranking beyond the specification, difficulty estimation beyond `unknown`, external-link or heading-anchor validation, AI, cloning, repository execution, GitHub writes, databases, or background application agents. AI remains disabled and no billable AI call occurred.
