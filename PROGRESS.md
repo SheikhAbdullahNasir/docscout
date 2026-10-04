@@ -277,6 +277,36 @@ One initial combined focused run encountered the known transient Windows sandbox
 
 Phase 2B implementation commits: `54dd5fe` (`feat: add Phase 2B npm script analysis`) and `0637e43` (`fix: harden Phase 2B command parsing`). No push or pull request was requested or attempted. This documentation follow-up records the verified local checkpoint.
 
+## Phase 2C — deterministic labeled-issue opportunity findings (October 4, 2026)
+
+- Added a pure deterministic analyzer over the already-fetched Phase 1D `RepositoryIssues` evidence plus public repository metadata. It performs no GitHub calls, URL fetches, filesystem access, repository execution, or LLM calls. Snapshot orchestration still performs only the two existing supported-label issue streams and feeds their validated results to the analyzer.
+- Creates one shared-contract `labeled-issue` finding per unique supported issue. Findings use stable SHA-256-derived IDs based on type + canonical issue source + issue number, confidence `maintainer-label`, difficulty `unknown`, exact maintainer labels, canonical issue URL/number, original issue title, assigned state/assignees, bounded Phase 1 body excerpt, and normalized update time.
+- Keeps label semantics narrow and distinct. `good first issue` means maintainers applied a label commonly intended to signal a possible starting point, without guaranteeing ease or availability. `help wanted` means only that maintainers marked the issue as seeking help; it is never described as easy, quick, low risk, or beginner-friendly. An issue with both labels produces one good-first-issue finding.
+- Ranks deterministically: unassigned `good first issue`, assigned `good first issue`, then `help wanted`; newest `updatedAt` first within each group; issue number ascending and source URL provide deterministic tie-breakers. Assignment remains evidence rather than suppression, and assigned findings explicitly require checking current discussion and assignment before treating work as available.
+- Archived repositories retain evidence-backed findings but every finding receives an archive caveat that avoids implying active maintenance. Every finding also explains that labels are maintainer-provided evidence rather than DocScout difficulty estimates, that state/discussion/assignment can change, and that the current issue must be verified before work starts.
+- Findings include deterministic manual verification steps: open the issue, read the latest discussion, check current work/assignment/status, read repository-local CONTRIBUTING guidance, inspect linked pull requests/recent comments, and ask maintainers before substantial work when expectations are unclear. No contact, issue, or pull request is automated.
+- Caps labeled-issue findings at 20 after ranking and reports eligible, produced, and omitted counts. Phase 1 retrieval coverage remains separately preserved as the complete/sampled/per-label query record. Sampling and partial failure are independent caveats, including when both apply simultaneously; empty results stay narrow and never claim that no opportunities exist.
+- Added a minimal common aggregation layer while preserving all three independently testable analyzer results. The shared finding list places Phase 2A/2B documentation findings before Phase 2C issue opportunities, caps combined documentation output at 50, retains the separate 20-issue capacity, and reports total documentation omissions including per-analyzer and combined-cap omissions.
+- Ready snapshots expose `findings`, aggregation coverage, `markdownLinks`, `npmScripts`, and `labeledIssues` in the existing analysis object. Empty repositories preserve `snapshot: null` while exposing top-level Phase 2C analysis, because already-fetched open labeled issues can still be useful without a commit snapshot. The browser validates these contracts but does not render Phase 2 findings; no Phase 3 presentation work was added.
+
+### Phase 2C verification
+
+| Command/check | Actual result |
+|---|---|
+| Focused red/green analyzer, aggregation, integration, and browser-contract tests | Passed after observing failures for the missing analyzer, missing snapshot integration, missing browser guard, sampled-plus-partial coverage, empty-repository analysis, the shared documentation cap, and omission accounting mutation |
+| `npm run lint` | Passed on the final implementation tree |
+| `npm run typecheck` | Passed across all three workspaces on the final implementation tree |
+| `npm test` | Passed: 311 tests across 13 suites; 17 new focused Phase 2C/aggregation tests and all earlier regressions |
+| `npm run build` | Passed: Vite frontend and TypeScript server builds |
+| `npm run test:production` | Passed: health, frontend HTML, built JS/CSS assets, unknown API 404 |
+| `npm run test:e2e` | Passed: all 13 Chromium tests, including empty-repository Phase 2C and malformed-response contract regressions |
+| Diff/secret review | Passed: scoped source/contracts/tests only; no whitespace errors, generated artifacts, or credential-like material; the only token match was the existing client configuration variable |
+| Independent review | Initial review found no Critical issues and two Important coverage/integration gaps; both were fixed. Re-review found no remaining Critical or Important issues and verified focused tests/typecheck |
+
+Offline fixtures cover unassigned and assigned good-first issues, help-wanted-only semantics, both labels, exact label/evidence retention, all ranking groups, update ordering and deterministic ties, deduplication, the 20-result cap, shared documentation ordering/cap, assignment and archive caveats, complete/sampled/partial/sampled-plus-partial retrieval, empty results, empty repositories with issues, and malicious issue-body text retained only as plain evidence. No live public-repository smoke was run because controlled fixtures establish deterministic correctness without depending on a repository currently containing supported labeled issues.
+
+The first combined sandboxed Vitest runs encountered the known transient Windows temporary-file `ENOENT`, and sandboxed Supertest hit loopback `EACCES`; unchanged reruns outside those sandbox restrictions passed. Playwright emitted the existing harmless `NO_COLOR`/`FORCE_COLOR` warnings. No required verification check was skipped or remains blocked. Phase 2C implementation commit: `3dca3a0` (`feat: add Phase 2C labeled issue analysis`). No push or pull request was requested or attempted.
+
 ## Remaining work
 
-Stop after this verified Phase 2B checkpoint. The recommended next step is a separately scoped Phase 2C task for deterministic labeled-issue opportunity findings. Do not combine it with Phase 3 presentation, ranking beyond the specification, difficulty estimation beyond `unknown`, external-link or heading-anchor validation, AI, cloning, repository execution, GitHub writes, databases, or background application agents. AI remains disabled and no billable AI call occurred.
+Stop after this verified Phase 2C checkpoint. The recommended next step is a separately scoped Phase 3 task for deterministic result presentation using the existing typed findings and coverage. Do not begin presentation redesign, filters, copy-next-steps UI, AI explanation, difficulty estimation, external-link or heading-anchor validation, cloning, repository execution, GitHub writes, databases, or background application agents without a new task. AI remains disabled and no billable AI call occurred.
