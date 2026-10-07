@@ -115,15 +115,43 @@ describe('snapshot endpoint', () => {
     expect(fetcher).not.toHaveBeenCalled();
   });
 
-  it('rejects oversized browser results without silently returning partial paths as complete', async () => {
+  it('bounds oversized browser results while preserving metadata and disclosing omitted paths', async () => {
     const entries = Array.from({ length: 3200 }, (_, index) => ({ path: `${'a'.repeat(1000)}/${index}`, type: 'blob', mode: '100644', sha: commitSha }));
     const fetcher = vi.fn<typeof fetch>().mockResolvedValueOnce(Response.json(metadata))
       .mockResolvedValueOnce(Response.json(commit)).mockResolvedValueOnce(Response.json({ sha: treeSha, truncated: false, tree: entries }))
       .mockResolvedValueOnce(Response.json([])).mockResolvedValueOnce(Response.json([]));
     const response = await request(createApp({ github: new GitHubClient({ fetcher }) })).post('/api/repository/snapshot').send(input);
-    expect(response.status).toBe(502);
-    expect(response.body.error.code).toBe('TREE_LOOKUP_FAILED');
-    expect(response.body.snapshot).toBeUndefined();
+    expect(response.status).toBe(200);
+    expect(response.body.repository.owner).toBe('Canonical');
+    expect(response.body.snapshot).toMatchObject({ commitSha, treeSha, tree: { entries: [], complete: false, truncated: false } });
+    expect(response.body.scan).toMatchObject({ status: 'partial', responseOmissions: { treeEntries: 3200 },
+      warnings: [{ code: 'BROWSER_RESPONSE_LIMIT', message: expect.any(String) }] });
+    expect(Buffer.byteLength(response.text, 'utf8')).toBeLessThanOrEqual(3 * 1024 * 1024);
+  });
+
+  it('rejects a request exceeding 4 KiB before any GitHub work', async () => {
+    const fetcher = vi.fn<typeof fetch>();
+    const body = JSON.stringify({ ...input, padding: 'x'.repeat(4096) });
+    const response = await request(createApp({ github: new GitHubClient({ fetcher }) }))
+      .post('/api/repository/snapshot').type('json').send(body);
+    expect(response.status).toBe(413);
+    expect(response.body).toEqual({ error: { code: 'REQUEST_TOO_LARGE', message: expect.stringContaining('4 KiB') }, requestId: expect.any(String) });
+    expect(response.text).not.toMatch(/stack|entity\.too\.large/);
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
+  it('includes metadata lookup in the scan deadline and safely stops before commit lookup', async () => {
+    let time = 0;
+    const fetcher = vi.fn<typeof fetch>().mockImplementation(async () => {
+      time = 60_000;
+      return Response.json(metadata);
+    });
+    const response = await request(createApp({ github: new GitHubClient({ fetcher, clock: () => time, token: 'token-sentinel' }) }))
+      .post('/api/repository/snapshot').send(input);
+    expect(response.status).toBe(504);
+    expect(response.body).toEqual({ error: { code: 'SCAN_DEADLINE_EXCEEDED', message: expect.any(String) }, requestId: expect.any(String) });
+    expect(response.text).not.toMatch(/token-sentinel|stack|Authorization/);
+    expect(fetcher).toHaveBeenCalledTimes(1);
   });
 
   it.each(['commit', 'tree'])('returns safe serialized failure for %s', async (stage) => {

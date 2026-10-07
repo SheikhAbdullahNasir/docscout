@@ -176,7 +176,7 @@ describe('default-branch snapshot', () => {
         .mockResolvedValueOnce(Response.json([])).mockResolvedValueOnce(Response.json([]));
       const result = new GitHubClient({ fetcher }).getSnapshot(repository);
       if (valid) await expect(result).resolves.toMatchObject({ status: 'ready' });
-      else await expect(result).rejects.toMatchObject({ code: 'GITHUB_UPSTREAM_FAILURE' });
+      else await expect(result).rejects.toMatchObject({ code: 'GITHUB_RESPONSE_TOO_LARGE' });
     }
   });
 

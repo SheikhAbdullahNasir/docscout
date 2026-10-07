@@ -77,9 +77,9 @@ describe('GitHub metadata client', () => {
   });
 
   it('rejects malformed JSON and a streamed response over 2 MiB', async () => {
-    for (const body of ['{bad json', 'x'.repeat(2 * 1024 * 1024 + 1)]) {
+    for (const [body, code] of [['{bad json', 'GITHUB_UPSTREAM_FAILURE'], ['x'.repeat(2 * 1024 * 1024 + 1), 'GITHUB_RESPONSE_TOO_LARGE']]) {
       const fetcher = vi.fn<typeof fetch>().mockResolvedValue(new Response(body));
-      await expect(new GitHubClient({ fetcher }).getRepository(input)).rejects.toMatchObject({ code: 'GITHUB_UPSTREAM_FAILURE' });
+      await expect(new GitHubClient({ fetcher }).getRepository(input)).rejects.toMatchObject({ code });
     }
   });
 
@@ -92,7 +92,7 @@ describe('GitHub metadata client', () => {
 
   it('returns a safe error when the request times out', async () => {
     const fetcher = vi.fn<typeof fetch>().mockRejectedValue(new DOMException('secret upstream context', 'TimeoutError'));
-    await expect(new GitHubClient({ fetcher }).getRepository(input)).rejects.toMatchObject({ code: 'GITHUB_UPSTREAM_FAILURE', status: 502 });
+    await expect(new GitHubClient({ fetcher }).getRepository(input)).rejects.toMatchObject({ code: 'GITHUB_REQUEST_TIMEOUT', status: 504 });
   });
 
   it('does not follow even a same-host redirect or forward authorization', async () => {

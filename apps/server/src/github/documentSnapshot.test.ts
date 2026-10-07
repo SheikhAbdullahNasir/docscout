@@ -182,13 +182,22 @@ describe('pinned selected repository documents', () => {
     ['server error', () => Response.json({ message: 'secret' }, { status: 500 })],
     ['redirect', () => new Response(null, { status: 302, headers: { Location: 'https://evil.test/file' } })],
     ['malformed JSON', () => new Response('{bad')],
-    ['oversized response', () => new Response('x'.repeat(2 * 1024 * 1024 + 1))],
   ])('turns optional content %s into an unavailable skip', async (_label, response) => {
     const result = await new GitHubClient({ fetcher: fetchFor([blob('README.md', 'text')], [response()]) })
       .getSnapshot(repository);
     expect(result).toMatchObject({ status: 'ready', snapshot: { documents: {
       readme: { status: 'unavailable' }, skipped: [{ path: 'README.md', reason: 'unavailable' }],
     } } });
+  });
+
+  it('marks oversized selected content unknown with a typed resource omission', async () => {
+    const result = await new GitHubClient({ fetcher: fetchFor([blob('README.md', 'text')], [new Response('x'.repeat(2 * 1024 * 1024 + 1))]) })
+      .getSnapshot(repository);
+    expect(result).toMatchObject({ status: 'ready', scan: { status: 'partial', warnings: [{ code: 'GITHUB_RESPONSE_TOO_LARGE' }] },
+      snapshot: { documents: {
+        readme: { status: 'unknown' }, skipped: [{ path: 'README.md', reason: 'GITHUB_RESPONSE_TOO_LARGE' }],
+        omissions: ['GITHUB_RESPONSE_TOO_LARGE'],
+      } } });
   });
 
   it('turns an optional content transport failure into an unavailable skip', async () => {

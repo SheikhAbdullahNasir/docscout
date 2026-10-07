@@ -347,3 +347,24 @@ Stop after this verified Phase 3 completion gate. The recommended next step is a
 ## Phase 2 completion gate (October 5, 2026)
 
 Phase 2 is complete. A lightweight acceptance review confirmed that all three analyzers still match the Phase 2 contract, documented false-positive controls remain covered by focused tests, documentation findings remain before issue findings, and documentation/issue caps and coverage remain truthful. The analyzers remain pure over fetched evidence: no GitHub fetching, filesystem access, command execution, or AI work was found. Focused verification passed with 124 tests across four suites; `npm run typecheck` and `npm run lint` also passed. No acceptance gap or code change was required.
+
+## Phase 4A — scan/request resource budgets and deadlines (October 8, 2026)
+
+- Added a small per-scan `ScanBudget` shared from metadata lookup through pinned snapshot, selected content, and issue pagination. It exposes used/remaining requests, an absolute 60-second deadline, remaining time, and cancellation. Every dispatched attempt counts; request 30 is allowed and request 31 is prevented. No retry policy was added.
+- Preserved the existing 256 KiB decoded UTF-8 file cap, 2 MiB combined text cap, and bounded document selection. Preserved streamed GitHub caps of 10 MiB for recursive trees and 2 MiB for other REST bodies; crossing a cap cancels reading and returns a typed safe error or explicit optional-content omission. Structured JSON is never silently truncated.
+- Each request has a cancellable 10-second timeout covering headers and streamed body reading, with injectable-clock checks as well as timers. The shared scan deadline starts before metadata lookup, aborts remaining requests, and prevents new document parsing after expiry. Completed documents, findings, and issue pages remain useful partial evidence; unstarted/failed work is explicitly unknown or unchecked.
+- Retained the analysis endpoint's 4 KiB JSON input limit and safe 413 response before GitHub work. Browser responses are measured as UTF-8 JSON before whole-response serialization and bounded to 3 MiB. Safe previews/excerpts are shortened first; oversized structural records are omitted whole with typed counts, incomplete delivery coverage, and a stable warning. Retained finding IDs, source references, and structural evidence are never shortened. Ordinary responses remain unchanged.
+- Added browser validation/presentation for the additive partial scan coverage and deadline skip reason, preserving the existing ready/empty snapshot contract, finding order, filters, copy actions, and plain-text rendering. Analyzer implementations, public-only behavior, and fixed-host GitHub security are unchanged.
+
+Focused offline verification passed **288 tests across 14 suites**, including **25 new Phase 4A tests** for shared budgets/pagination/attempt counting, streamed caps, timer and injected-clock boundaries, retained partial evidence, request-body rejection, response bounding/omissions, and browser contract/announcements. Existing selected-file/content-cap and Phase 2 analyzer regressions passed.
+
+```text
+npm test -- apps/server/src/github/client.test.ts apps/server/src/github/snapshot.test.ts apps/server/src/github/documents.test.ts apps/server/src/github/documentSnapshot.test.ts apps/server/src/github/issueSnapshot.test.ts apps/server/src/routes/repository.test.ts apps/server/src/routes/snapshot.test.ts apps/server/src/github/resourceLimits.test.ts apps/server/src/routes/browserBudget.test.ts apps/server/src/analyzers/localLinks.test.ts apps/server/src/analyzers/npmScripts.test.ts apps/server/src/analyzers/labeledIssues.test.ts apps/server/src/analyzers/analysis.test.ts apps/web/src/phase4Budget.test.ts
+npm run typecheck
+npm run lint
+git diff --check
+```
+
+All commands passed on the final implementation. The initial restricted Windows Vitest run hit the known temporary-file `ENOENT`; the unchanged run outside that restriction worked. A later concurrent verification run hit the existing 2 MiB fixture's five-second test timeout; the unchanged focused command passed when rerun on its own, without changing the fixture or timeout.
+
+No required check remains blocked. The whole test suite, production smoke, E2E, full build, and independent review were intentionally deferred to the Phase 4 completion gate. No live GitHub test was used. Queueing/admission, retries, deduplication, caching/LRU/ETags, IP rate limits/proxy changes, CI, and AI remain unimplemented. Stop at this Phase 4A checkpoint; the next step is a separately scoped, approved Phase 4B task.

@@ -3,6 +3,7 @@ import type {
   SupportedIssueLabel,
 } from '@docscout/shared';
 import { ApplicationError } from '../errors.js';
+import { isResourceError } from './scanBudget.js';
 
 export const SUPPORTED_ISSUE_LABELS = ['good first issue', 'help wanted'] as const satisfies readonly SupportedIssueLabel[];
 const EMPTY_QUERY_MESSAGE = 'No matches were returned for the supported label query.';
@@ -148,7 +149,9 @@ async function retrieveLabel(
       if (fatalIssueError(error)) throw error;
       return { items, coverage: {
         label, status: pagesFetched === 0 ? 'failed' : 'partial', pagesFetched, capped: false,
-        message: pagesFetched === 0 ? FAILED_REQUEST_MESSAGE : INCOMPLETE_REQUEST_MESSAGE,
+        ...(isResourceError(error)
+          ? { reason: error.code, message: error.message }
+          : { message: pagesFetched === 0 ? FAILED_REQUEST_MESSAGE : INCOMPLETE_REQUEST_MESSAGE }),
       } };
     }
     let pageItems: RepositoryIssue[];
@@ -193,7 +196,8 @@ export async function retrieveIssues(
 ): Promise<RepositoryIssues> {
   const streams = [];
   for (const label of SUPPORTED_ISSUE_LABELS) streams.push(await retrieveLabel(repository, label, load));
-  if (streams.every(({ coverage }) => coverage.status === 'failed')) {
+  if (streams.every(({ coverage }) => coverage.status === 'failed')
+    && !streams.some(({ coverage }) => coverage.reason)) {
     throw new ApplicationError(502, 'GITHUB_UPSTREAM_FAILURE', 'GitHub issue coverage could not be retrieved. Please try again later.');
   }
   const unique = new Map<number, RepositoryIssue>();

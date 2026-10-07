@@ -35,6 +35,7 @@ export type RepositoryDocument = {
   sha: string;
   decodedSize: number;
   reportedSize: number;
+  previewTruncated?: boolean;
 };
 
 export type RepositoryDocumentState =
@@ -45,7 +46,7 @@ export type RepositoryDocumentSkip = {
   path: string;
   category: RepositoryDocumentCategory;
   reason: 'symlink' | 'submodule' | 'oversized' | 'binary' | 'git-lfs-pointer'
-    | 'malformed' | 'unavailable' | 'combined-content-limit';
+    | 'malformed' | 'unavailable' | 'combined-content-limit' | ScanResourceWarningCode;
 };
 
 export type RepositoryDocuments = {
@@ -55,7 +56,7 @@ export type RepositoryDocuments = {
   packageJson: RepositoryDocumentState;
   docs: RepositoryDocument[];
   skipped: RepositoryDocumentSkip[];
-  omissions: Array<'docs-limit' | 'combined-content-limit'>;
+  omissions: Array<'docs-limit' | 'combined-content-limit' | ScanWarningCode>;
 };
 
 export type MissingLocalTargetFinding = {
@@ -70,6 +71,7 @@ export type MissingLocalTargetFinding = {
     sourceUrl: string;
     sourceLine: number;
     excerpt: string;
+    excerptTruncated?: boolean;
     linkText: string;
     originalTarget: string;
     normalizedTarget: string;
@@ -96,6 +98,7 @@ export type RepositoryMarkdownLinkAnalysis = {
     };
     uncheckedDocumentsByReason: {
       parserSafetyLimit: number;
+      scanDeadline?: number;
     };
     unsupportedByReason: {
       images: number;
@@ -121,6 +124,7 @@ export type PossibleMissingNpmScriptFinding = {
     sourceUrl: string;
     sourceLine: number;
     excerpt: string;
+    excerptTruncated?: boolean;
     command: string;
     script: string;
     manifestPath: 'package.json';
@@ -135,7 +139,7 @@ export type RepositoryNpmScriptAnalysis = {
   coverage: {
     status: 'checked' | 'skipped';
     skipReason?: 'readme-unavailable' | 'manifest-unavailable' | 'manifest-invalid-json'
-      | 'manifest-not-object' | 'scripts-missing' | 'scripts-invalid' | 'parser-safety-limit';
+      | 'manifest-not-object' | 'scripts-missing' | 'scripts-invalid' | 'parser-safety-limit' | 'scan-deadline';
     supportedCommandsChecked: number;
     commandsSkipped: number;
     findingsProduced: number;
@@ -164,6 +168,7 @@ export type RepositoryIssue = {
   assignees: string[];
   assigned: boolean;
   bodyExcerpt: string;
+  bodyExcerptTruncated?: boolean;
 };
 
 export type RepositoryIssueQueryCoverage = {
@@ -172,6 +177,7 @@ export type RepositoryIssueQueryCoverage = {
   pagesFetched: number;
   capped: boolean;
   message?: string;
+  reason?: ScanResourceWarningCode;
 };
 
 export type RepositoryIssues = {
@@ -198,6 +204,7 @@ export type LabeledIssueFinding = {
     assigned: boolean;
     assignees: string[];
     excerpt: string;
+    excerptTruncated?: boolean;
     updatedAt: string;
   };
   whyItMatters: string;
@@ -230,7 +237,21 @@ export type EmptyRepositoryAnalysis = {
   labeledIssues: RepositoryLabeledIssueAnalysis;
 };
 
-export type RepositorySnapshotResult =
+export type ScanResourceWarningCode = 'GITHUB_REQUEST_BUDGET_EXHAUSTED' | 'SCAN_DEADLINE_EXCEEDED'
+  | 'GITHUB_REQUEST_TIMEOUT' | 'GITHUB_RESPONSE_TOO_LARGE';
+export type ScanWarningCode = ScanResourceWarningCode | 'BROWSER_RESPONSE_LIMIT';
+export type ScanWarning = { code: ScanWarningCode; message: string };
+export type RepositoryScanCoverage = {
+  status: 'partial';
+  githubRequests: number;
+  warnings: ScanWarning[];
+  responseOmissions?: {
+    previews: number; excerpts: number; treeEntries: number; issueRecords: number;
+    documents: number; skippedDocuments: number; findings: number;
+  };
+};
+
+export type RepositorySnapshotResult = (
   | { status: 'ready'; snapshot: {
     defaultBranch: string;
     commitSha: string;
@@ -245,7 +266,8 @@ export type RepositorySnapshotResult =
       labeledIssues: RepositoryLabeledIssueAnalysis;
     };
   }; issues: RepositoryIssues }
-  | { status: 'empty'; snapshot: null; message: string; issues: RepositoryIssues; analysis: EmptyRepositoryAnalysis };
+  | { status: 'empty'; snapshot: null; message: string; issues: RepositoryIssues; analysis: EmptyRepositoryAnalysis }
+) & { scan?: RepositoryScanCoverage };
 
 export type RepositorySnapshotResponse = RepositorySnapshotResult & {
   schemaVersion: 1;
@@ -256,7 +278,7 @@ export type RepositoryErrorCode =
   | 'INVALID_REPOSITORY_URL' | 'INVALID_REQUEST_BODY' | 'REQUEST_TOO_LARGE'
   | 'REPOSITORY_UNAVAILABLE' | 'PRIVATE_REPOSITORY' | 'GITHUB_AUTH_ERROR'
   | 'GITHUB_FORBIDDEN' | 'GITHUB_COOLDOWN' | 'GITHUB_UPSTREAM_FAILURE'
-  | 'COMMIT_LOOKUP_FAILED' | 'TREE_LOOKUP_FAILED';
+  | 'COMMIT_LOOKUP_FAILED' | 'TREE_LOOKUP_FAILED' | ScanResourceWarningCode;
 
 export type RepositoryErrorResponse = {
   error: { code: RepositoryErrorCode; message: string; retryAt?: string };

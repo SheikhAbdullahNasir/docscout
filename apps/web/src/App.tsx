@@ -80,7 +80,7 @@ function isNpmScriptAnalysis(value: unknown): boolean {
   const coverage = value.coverage;
   const skipReasons = [
     'readme-unavailable', 'manifest-unavailable', 'manifest-invalid-json',
-    'manifest-not-object', 'scripts-missing', 'scripts-invalid', 'parser-safety-limit',
+    'manifest-not-object', 'scripts-missing', 'scripts-invalid', 'parser-safety-limit', 'scan-deadline',
   ];
   const skipped = coverage.skippedByReason;
   return findings && (coverage.status === 'checked' || coverage.status === 'skipped')
@@ -147,8 +147,18 @@ function isAggregationCoverage(value: unknown): boolean {
     && isCount(value.issueFindingsProduced);
 }
 
-function isSnapshotResponse(value: unknown): value is RepositorySnapshotResponse {
+export function isSnapshotResponse(value: unknown): value is RepositorySnapshotResponse {
   if (!isRecord(value) || value.schemaVersion !== 1 || (value.status !== 'ready' && value.status !== 'empty')) return false;
+  const scan = value.scan;
+  if (scan !== undefined) {
+    if (!isRecord(scan) || scan.status !== 'partial' || !isCount(scan.githubRequests)
+      || !Array.isArray(scan.warnings) || !scan.warnings.every((warning) => isRecord(warning)
+        && typeof warning.code === 'string' && typeof warning.message === 'string')) return false;
+    const omissions = scan.responseOmissions;
+    if (omissions !== undefined && (!isRecord(omissions)
+      || !['previews', 'excerpts', 'treeEntries', 'issueRecords', 'documents', 'skippedDocuments', 'findings']
+        .every((key) => isCount(omissions[key])))) return false;
+  }
   const repository = value.repository;
   const issues = value.issues;
   if (!isRecord(repository) || typeof repository.owner !== 'string' || typeof repository.name !== 'string'
@@ -372,6 +382,7 @@ const npmSkipMessages = {
   'scripts-missing': 'the root package.json had no scripts field',
   'scripts-invalid': 'the root package.json scripts field was not usable',
   'parser-safety-limit': 'the README exceeded the parser safety limit',
+  'scan-deadline': 'the scan deadline was reached before document parsing',
 } as const;
 
 function issueQuerySummary(query: RepositoryIssues['coverage']['queries'][number]): string {
@@ -396,6 +407,7 @@ function Coverage({ result }: { result: RepositorySnapshotResponse }) {
           ? 'Issue coverage: complete for both supported label queries.'
           : 'Issue coverage was partial; only returned issue evidence is shown.'}</p>
         <ul>
+          {result.scan?.warnings.map((warning) => <li key={warning.code}>{warning.message}</li>)}
           {result.issues.coverage.queries.map((query) => <li key={query.label}>{issueQuerySummary(query)}</li>)}
           {labeledIssueCoverage.findingsOmitted > 0 && (
             <li>Issue opportunities omitted by result limits: {labeledIssueCoverage.findingsOmitted}.</li>
@@ -411,6 +423,7 @@ function Coverage({ result }: { result: RepositorySnapshotResponse }) {
   const unavailableDocuments = documentStates.filter((state) => state.status !== 'available').length;
   const issueCoverageComplete = result.issues.coverage.complete && !result.issues.coverage.sampled;
   const complete = tree.complete && documents.selectionComplete && documents.skipped.length === 0
+    && !result.scan
     && documents.omissions.length === 0
     && analysis.markdownLinks.coverage.documentsUnchecked === 0
     && analysis.markdownLinks.coverage.uncheckedLinks === 0
@@ -427,6 +440,7 @@ function Coverage({ result }: { result: RepositorySnapshotResponse }) {
           : 'Partial coverage — useful checked evidence is shown below.'}
       </p>
       <ul>
+        {result.scan?.warnings.map((warning) => <li key={warning.code}>{warning.message}</li>)}
         <li>{tree.complete
           ? 'Repository tree: complete.'
           : `Repository tree: incomplete${tree.truncated ? ' because GitHub returned a truncated tree' : ''}.`}</li>
@@ -466,13 +480,13 @@ function Coverage({ result }: { result: RepositorySnapshotResponse }) {
   );
 }
 
-function Results({ result }: { result: RepositorySnapshotResponse }) {
+export function Results({ result }: { result: RepositorySnapshotResponse }) {
   const contributionCandidateSkipped = result.status === 'ready'
     && result.snapshot.documents.skipped.some((skip) => skip.category === 'contributing');
   const findings = result.status === 'ready' ? result.snapshot.analysis.findings : result.analysis.findings;
   return (
     <div className="results">
-      <p role="status" className="visually-hidden">Repository analysis complete.</p>
+      <p role="status" className="visually-hidden">{result.scan ? 'Repository analysis returned partial coverage.' : 'Repository analysis complete.'}</p>
       <section className="repository-summary" aria-labelledby="repository-heading">
         <p className="eyebrow">PHASE 1 REPOSITORY SNAPSHOT</p>
         <h2 id="repository-heading">{result.repository.owner}/{result.repository.name}</h2>
@@ -504,7 +518,8 @@ function Results({ result }: { result: RepositorySnapshotResponse }) {
           <p>No document snapshot is available because this repository has no commit to scan.</p>
         </section>
       )}
-      {findings.length === 0 && <p className="notice">No suggestions found in the checked scope.</p>}
+      {findings.length === 0 && <p className="notice">{result.scan?.responseOmissions?.findings
+        ? 'Suggestions were omitted by the browser response size limit.' : 'No suggestions found in the checked scope.'}</p>}
       <Findings findings={findings} />
       <Issues issues={result.issues} />
       <Coverage result={result} />

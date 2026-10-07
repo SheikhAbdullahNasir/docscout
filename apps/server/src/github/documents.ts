@@ -1,6 +1,7 @@
 import type {
   PublicRepositoryMetadata, RepositoryDocument, RepositoryDocuments, RepositoryDocumentSkip,
   RepositoryDocumentState, RepositoryTreeEntry,
+  ScanResourceWarningCode,
 } from '@docscout/shared';
 
 export const MAX_DOCUMENT_BYTES = 256 * 1024;
@@ -32,7 +33,8 @@ export type DecodedContentsFile =
   | { status: 'available'; text: string; decodedSize: number; reportedSize: number }
   | { status: 'skipped'; reason: 'malformed' | 'oversized' | 'binary' | 'git-lfs-pointer' };
 
-export type ContentsLoaderResult = { status: 'available'; value: unknown } | { status: 'unavailable' };
+export type ContentsLoaderResult = { status: 'available'; value: unknown }
+  | { status: 'unavailable'; reason?: ScanResourceWarningCode; message?: string };
 
 const markdownReadmeExtensions = new Set(['md', 'markdown', 'mdown', 'mkdn', 'mkd']);
 
@@ -227,8 +229,13 @@ export async function retrieveDocuments(
 
     const loaded = await load(candidate);
     if (loaded.status === 'unavailable') {
-      skipped.push({ path: candidate.path, category: candidate.category, reason: 'unavailable' });
-      if (candidate.category !== 'docs') documents[candidate.category === 'package-json' ? 'packageJson' : candidate.category] = unavailableState(candidate.category);
+      skipped.push({ path: candidate.path, category: candidate.category, reason: loaded.reason ?? 'unavailable' });
+      if (loaded.reason && !documents.omissions.includes(loaded.reason)) documents.omissions.push(loaded.reason);
+      if (candidate.category !== 'docs') {
+        documents[candidate.category === 'package-json' ? 'packageJson' : candidate.category] = loaded.reason
+          ? { status: 'unknown', message: loaded.message ?? 'Selected content was not checked because a scan resource limit was reached.' }
+          : unavailableState(candidate.category);
+      }
       continue;
     }
     const decoded = decodeContentsFile(loaded.value, candidate);

@@ -4,6 +4,7 @@ import type { RepositoryErrorResponse, RepositoryMetadataResponse, RepositorySna
 import { ApplicationError } from '../errors.js';
 import { GitHubClient } from '../github/client.js';
 import { parseRepositoryUrl } from '../security/repositoryUrl.js';
+import { boundBrowserResponse } from './browserBudget.js';
 
 export function repositoryRoute(github: GitHubClient) {
   const router = express.Router();
@@ -16,13 +17,14 @@ export function repositoryRoute(github: GitHubClient) {
     res.json(result);
   });
   router.post('/snapshot', express.json({ limit: '4kb', strict: false }), async (req, res) => {
-    const repository = await github.getRepository(parseRepositoryUrl(readRepositoryUrl(req.body)));
-    const snapshot = await github.getSnapshot(repository);
-    const result: RepositorySnapshotResponse = { schemaVersion: 1, repository, ...snapshot };
-    if (Buffer.byteLength(JSON.stringify(result), 'utf8') > 3 * 1024 * 1024) {
-      throw new ApplicationError(502, 'TREE_LOOKUP_FAILED', 'The repository tree is too large to return safely. Path coverage is unavailable.');
-    }
-    res.json(result);
+    const input = parseRepositoryUrl(readRepositoryUrl(req.body));
+    const budget = github.createScanBudget();
+    try {
+      const repository = await github.getRepository(input, budget);
+      const snapshot = await github.getSnapshot(repository, budget);
+      const result: RepositorySnapshotResponse = { schemaVersion: 1, repository, ...snapshot };
+      res.json(boundBrowserResponse(result, budget.requestsUsed));
+    } finally { budget.dispose(); }
   });
   const errors: ErrorRequestHandler = (error: unknown, _req, res, _next) => {
     // Express recognizes error middleware by its four-argument signature.
