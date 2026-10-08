@@ -227,8 +227,108 @@ describe('GitHub metadata client', () => {
     await expect(new GitHubClient({ fetcher }).getRepository(input)).rejects.toMatchObject({ code: 'GITHUB_REQUEST_TIMEOUT', status: 504 });
   });
 
+  it('follows one validated same-host HTTPS redirect and uses canonical metadata for later requests', async () => {
+    const canonical = {
+      ...metadata,
+      owner: { login: 'CanonicalOwner' },
+      name: 'CanonicalRepo',
+      html_url: 'https://github.com/CanonicalOwner/CanonicalRepo',
+    };
+    const commitSha = 'a'.repeat(40);
+    const treeSha = 'b'.repeat(40);
+    const fetcher = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(new Response(null, { status: 301, headers: { Location: 'https://api.github.com/repos/CanonicalOwner/CanonicalRepo' } }))
+      .mockResolvedValueOnce(Response.json(canonical))
+      .mockResolvedValueOnce(Response.json({ sha: commitSha, commit: { tree: { sha: treeSha } } }))
+      .mockResolvedValueOnce(Response.json({ sha: treeSha, truncated: false, tree: [] }))
+      .mockResolvedValueOnce(Response.json([]))
+      .mockResolvedValueOnce(Response.json([]));
+    const client = new GitHubClient({ fetcher, token: 'sentinel' });
+    const budget = client.createScanBudget();
+
+    try {
+      const repository = await client.getRepository(input, budget);
+      expect(repository).toEqual({
+        owner: 'CanonicalOwner', name: 'CanonicalRepo', url: 'https://github.com/CanonicalOwner/CanonicalRepo',
+        private: false, archived: true, defaultBranch: 'release/docs',
+      });
+      await expect(client.getSnapshot(repository, budget)).resolves.toMatchObject({
+        status: 'ready', snapshot: { commitSha, tree: { complete: true } },
+      });
+      expect(fetcher.mock.calls.map(([url]) => url)).toEqual([
+        'https://api.github.com/repos/owner/repo',
+        'https://api.github.com/repos/CanonicalOwner/CanonicalRepo',
+        `https://api.github.com/repos/CanonicalOwner/CanonicalRepo/commits/release%2Fdocs`,
+        `https://api.github.com/repos/CanonicalOwner/CanonicalRepo/git/trees/${treeSha}?recursive=1`,
+        'https://api.github.com/repos/CanonicalOwner/CanonicalRepo/issues?state=open&labels=good%20first%20issue&sort=updated&direction=desc&per_page=100&page=1',
+        'https://api.github.com/repos/CanonicalOwner/CanonicalRepo/issues?state=open&labels=help%20wanted&sort=updated&direction=desc&per_page=100&page=1',
+      ]);
+      expect(fetcher).toHaveBeenCalledTimes(6);
+      expect(budget.requestsUsed).toBe(6);
+      expect(fetcher.mock.calls.every(([, options]) => options?.redirect === 'manual')).toBe(true);
+      expect(fetcher.mock.calls.map(([, options]) => new Headers(options?.headers).get('Authorization')))
+        .toEqual(Array(6).fill('Bearer sentinel'));
+    } finally {
+      budget.dispose();
+    }
+  });
+
+  it('does not follow a second validated same-host redirect', async () => {
+    const fetcher = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(new Response(null, { status: 301, headers: { Location: '/repos/CanonicalOwner/CanonicalRepo' } }))
+      .mockResolvedValueOnce(new Response(null, { status: 301, headers: { Location: '/repos/FinalOwner/FinalRepo' } }));
+    const client = new GitHubClient({ fetcher });
+    const budget = client.createScanBudget();
+
+    try {
+      await expect(client.getRepository(input, budget))
+        .rejects.toMatchObject({ code: 'GITHUB_UPSTREAM_FAILURE' });
+      expect(fetcher).toHaveBeenCalledTimes(2);
+      expect(budget.requestsUsed).toBe(2);
+      expect(fetcher.mock.calls.map(([url]) => url)).toEqual([
+        'https://api.github.com/repos/owner/repo',
+        'https://api.github.com/repos/CanonicalOwner/CanonicalRepo',
+      ]);
+    } finally {
+      budget.dispose();
+    }
+  });
+
+  it('counts a followed redirect against the 30-request scan limit', async () => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValueOnce(new Response(null, {
+      status: 301, headers: { Location: '/repos/CanonicalOwner/CanonicalRepo' },
+    }));
+    const client = new GitHubClient({ fetcher });
+    const budget = client.createScanBudget();
+    for (let request = 0; request < 29; request += 1) budget.consumeRequest();
+
+    try {
+      await expect(client.getRepository(input, budget))
+        .rejects.toMatchObject({ code: 'GITHUB_REQUEST_BUDGET_EXHAUSTED' });
+      expect(fetcher).toHaveBeenCalledTimes(1);
+      expect(budget.requestsUsed).toBe(30);
+    } finally {
+      budget.dispose();
+    }
+  });
+
+  it('does not follow a same-host redirect outside repository endpoints', async () => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValueOnce(new Response(null, {
+      status: 301, headers: { Location: '/users/CanonicalOwner' },
+    }));
+    const client = new GitHubClient({ fetcher });
+    const budget = client.createScanBudget();
+
+    try {
+      await expect(client.getRepository(input, budget)).rejects.toMatchObject({ code: 'GITHUB_UPSTREAM_FAILURE' });
+      expect(fetcher).toHaveBeenCalledTimes(1);
+      expect(budget.requestsUsed).toBe(1);
+    } finally {
+      budget.dispose();
+    }
+  });
+
   it.each([
-    ['same-host HTTPS', 'https://api.github.com/repos/new-owner/repo'],
     ['cross-host HTTPS', 'https://evil.test/repos/owner/repo'],
     ['non-HTTPS', 'http://api.github.com/repos/owner/repo'],
     ['credential-bearing cross-host', 'https://api.github.com@evil.test/repos/owner/repo'],

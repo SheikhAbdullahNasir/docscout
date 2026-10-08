@@ -17,6 +17,7 @@ const REQUEST_TIMEOUT_MS = 10_000;
 const MAX_COOLDOWN_MS = 24 * 60 * 60 * 1000;
 const MAX_DATE_MS = 8.64e15;
 const RETRYABLE_5XX = new Set([500, 502, 503, 504]);
+const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
 const EMPTY_REPOSITORY = Symbol('empty-repository');
 const CONTENT_UNAVAILABLE = Symbol('content-unavailable');
 type RequestStage = 'commit' | 'tree' | 'content' | 'issues';
@@ -37,6 +38,23 @@ class GitHubCooldownError extends ApplicationError {
 
 function upstreamError(message = 'GitHub returned an unavailable or invalid response. Please try again later.') {
   return new ApplicationError(502, 'GITHUB_UPSTREAM_FAILURE', message);
+}
+
+function validatedGitHubRedirect(location: string | null, currentUrl: URL): URL | undefined {
+  if (!location || location.length > 2048) return undefined;
+  let target: URL;
+  try { target = new URL(location, currentUrl); }
+  catch { return undefined; }
+
+  if (target.origin !== API_BASE || target.username || target.password || target.hash
+    || target.search !== currentUrl.search) return undefined;
+
+  const repositoryEndpoint = /^\/repos\/([^/]+)\/([^/]+)(\/.*)?$/u;
+  const current = repositoryEndpoint.exec(currentUrl.pathname);
+  const redirected = repositoryEndpoint.exec(target.pathname);
+  if (current && redirected && validOwner(redirected[1]) && validRepo(redirected[2])
+    && (redirected[3] ?? '') === (current[3] ?? '')) return target;
+  return undefined;
 }
 
 async function boundedJson(response: Response, signal: AbortSignal, checkTime: () => void, limit = RESPONSE_LIMIT): Promise<unknown> {
@@ -331,18 +349,30 @@ export class GitHubClient {
     };
     if (this.token) headers.Authorization = `Bearer ${this.token}`;
     let response: Response | undefined;
+    let url = new URL(`${API_BASE}${path}`);
+    let followedRedirect = false;
     try {
-      try {
-        response = await abortable(this.fetcher(
-          `${API_BASE}${path}`,
-          { method: 'GET', headers, redirect: 'manual', signal },
-        ), signal);
-      } catch (error) {
-        if (signal.aborted) throw error;
-        if (error instanceof TypeError) throw new TransientNetworkFailure();
-        throw error;
+      while (true) {
+        try {
+          response = await abortable(this.fetcher(
+            url.href,
+            { method: 'GET', headers, redirect: 'manual', signal },
+          ), signal);
+        } catch (error) {
+          if (signal.aborted) throw error;
+          if (error instanceof TypeError) throw new TransientNetworkFailure();
+          throw error;
+        }
+        checkTime();
+        if (!REDIRECT_STATUSES.has(response.status)) break;
+
+        const target = followedRedirect ? undefined : validatedGitHubRedirect(response.headers.get('location'), url);
+        if (!target) break;
+        if (response.body) await abortable(response.body.cancel(), signal);
+        budget.consumeRequest();
+        followedRedirect = true;
+        url = target;
       }
-      checkTime();
       if (response.status === 200) return { value: await boundedJson(response, signal, checkTime,
         options.stage === 'tree' ? 10 * 1024 * 1024 : RESPONSE_LIMIT), headers: new Headers(response.headers) };
       if (response.status === 409 && options.stage === 'commit') {
@@ -362,8 +392,7 @@ export class GitHubClient {
         if (response.body) await abortable(response.body.cancel(), signal);
         return { value: CONTENT_UNAVAILABLE, headers: new Headers(response.headers) };
       }
-      // Do not follow redirects, including GitHub repository-renaming redirects.
-      // Every status consumes/cancels its body; errors never copy upstream messages.
+      // Every other status consumes/cancels its body; errors never copy upstream messages.
       const retryAtMs = retryTime(response.headers, this.clock());
       const primaryLimit = response.headers.get('x-ratelimit-remaining')?.trim() === '0';
       let secondaryLimit = false;

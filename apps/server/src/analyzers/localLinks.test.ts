@@ -156,19 +156,21 @@ describe('repository-relative Markdown target analysis', () => {
       '[email](mailto:maintainer@example.com)',
       '[anchor](#install)',
       '[ftp](ftp://example.com/file)',
+      '[javascript](javascript:alert(1))',
+      '[data](data:text/html,unsafe)',
       '![image](docs/image.png)',
     ].join('\n');
     const result = analyze(markdown, [entry('README.md')]);
 
     expect(result.findings).toEqual([]);
-    expect(result.coverage).toMatchObject({ supportedLinksChecked: 0, uncheckedLinks: 0, unsupportedLinks: 6 });
+    expect(result.coverage).toMatchObject({ supportedLinksChecked: 0, uncheckedLinks: 0, unsupportedLinks: 8 });
     expect(result.coverage.unsupportedByReason).toEqual({
       images: 1,
       external: 1,
       protocolRelative: 1,
       mailto: 1,
       pureAnchor: 1,
-      otherScheme: 1,
+      otherScheme: 3,
       suspiciousTarget: 0,
     });
   });
