@@ -1,7 +1,7 @@
 # DocScout release validation report
 
-- **Validation slice:** Phase 6C.1, October 8, 2026
-- **Status:** Complete for Phase 6C.1, October 8, 2026. The fifth total attempt retained the full Vitest response, all 50 emitted documentation findings were manually reviewed, issue coverage was recorded, and the corrected request-count field was confirmed live. Fourteen additional findings were omitted by DocScout's existing cap and were not inspected. No genuine analyzer defect was confirmed.
+- **Validation slice:** Phase 6C.1 and Phase 6C.2, October 8, 2026
+- **Status:** Phase 6C real-repository validation is complete for six unique public repositories. Phase 6C.1's retained Vitest response had all 50 emitted documentation findings reviewed; Phase 6C.2 added exactly three new one-pass scans and emitted no documentation findings. Fourteen findings were omitted by DocScout's existing result cap and were not inspected. No unresolved analyzer defect was found. Phase 6 overall remains incomplete pending its release documentation and final verification gate.
 
 This is a small manual reality check, not a benchmark. DocScout does not promise that every repository contains useful findings. The goal is to inspect whether emitted findings are supported by the repository evidence DocScout checked. No issues or pull requests were opened during validation. AI remained disabled and was not involved.
 
@@ -202,10 +202,70 @@ Each row records the finding ID, type, confidence, pinned source line, target, s
 #### Capture and limitations
 
 The full 807,566-byte HTTP JSON response is retained at `C:\Users\HP\AppData\Local\Temp\docscout-vitest-final-2026-10-08T05-07-29-786Z.json` outside the repository worktree; it was not added to Git. The first local summary print also exceeded the terminal display limit because it included the findings array; the capture file stayed intact, and the review was read from it in five 10-finding batches. The earlier first and recovery scans remain documented above as clipped captures. Only the 50 findings returned by DocScout were reviewed. The 14 findings omitted by the documented result cap were not bypassed or inspected. No README external destination was fetched, and no repository code or command was run.
-## Review outcome and remaining gate
+## Phase 6C.2 — three additional retained-response scans (October 8, 2026; complete)
 
-All acceptance evidence for Phase 6C.1 is recorded: the controlled fixture tests passed (2 files, 107 tests); exactly 3 unique public repositories were scanned across 5 attempts; and all 50 documentation findings emitted by the final Vitest run were inspected. The additional 14 findings were explicitly omitted by DocScout's existing cap and were not inspected. Finding classifications were 0 supported/useful, 50 intentional/generated/project-convention, 0 false positives, and 0 inconclusive. The final run's labeled-issue coverage was complete and unsampled, with 1 opportunity and 0 omissions. The live response exposed the corrected complete-scan request count of 20. No genuine analyzer defect or unresolved evidence blocker remains, so **Phase 6C.1 is complete**.
+Exactly three additional unique public repositories were scanned, once each, through the compiled DocScout server at `POST /api/repository/snapshot`. Their GitHub repository pages identified them as public before scanning: [`pallets/click`](https://github.com/pallets/click), [`go-chi/chi`](https://github.com/go-chi/chi), and [`squidfunk/mkdocs-material`](https://github.com/squidfunk/mkdocs-material). The selection adds a Python CLI project, a Go library, and a documentation framework with a substantial Markdown tree. Each raw HTTP JSON response was written to the system temp directory before parsing. All returned HTTP 200, `status: ready`, `cached: false`, complete scan coverage, and no warnings. There were no retries or extra scans in Phase 6C.2.
 
-The recurring route pattern was VitePress interpreting root-absolute links under its `docs/` source root and extensionless Markdown routes with `cleanUrls: true`; the findings themselves only reported absence from the analyzer's repository-relative snapshot and included a limitation that absence does not establish broken documentation. No analyzer correction was required. Historical request counts remain unavailable for earlier scans.
+| Repository | Commit SHA | Scanned at (`scannedAt`) | Issues fetched at | Cache / scan / requests | Runtime |
+|---|---|---|---|---|---|
+| `pallets/click` | `2247b35ea1c47c727d7a06e51fa280e12a863ff6` | `2026-10-08T06:28:43.612Z` | `2026-10-08T06:28:52.825Z` | uncached / complete / 19 | 9,329 ms client-measured |
+| `go-chi/chi` | `167e1e3bd039d060696b99c8da4e876ae04f42c1` | `2026-10-08T06:28:52.890Z` | `2026-10-08T06:28:56.008Z` | uncached / complete / 7 | 3,171 ms client-measured |
+| `squidfunk/mkdocs-material` | `6d3dc570d51064a3f55d189bd22c2390b07d46fe` | `2026-10-08T06:28:56.060Z` | `2026-10-08T06:29:05.318Z` | uncached / complete / 20 | 9,413 ms client-measured |
 
-No GitHub issue or pull request was created. AI remained disabled. No repository was cloned, no code or commands from the analyzed repository were executed, no dependencies were installed, and no arbitrary README link was followed. Phase 6 overall remains incomplete; Phase 6C.2 was not started. Full suite, E2E, production gate, lint, typecheck, and build checks were intentionally deferred for this validation slice.
+### `pallets/click`
+
+- **Canonical identity / selection:** `pallets/click` — `https://github.com/pallets/click`; a Python command-line toolkit with a root README and `docs/` tree. It adds a Python project shape independent from the prior JavaScript/TypeScript, Rust, and Go samples.
+- **Snapshot / requests:** Commit `2247b35ea1c47c727d7a06e51fa280e12a863ff6`; `scannedAt` `2026-10-08T06:28:43.612Z`; `issuesFetchedAt` `2026-10-08T06:28:52.825Z`; `cached: false`; scan `complete`, `githubRequests: 19`, warnings `[]`.
+- **Tree / documents:** Complete, not truncated, 204 entries. `documents.selectionComplete: true`; README and `docs/contributing.md` were available, root `package.json` was unavailable, 12 additional docs Markdown files were selected, and none were skipped. `docs-limit` records additional docs omitted by the bounded selector.
+- **Markdown / npm scripts:** 14 Markdown documents analyzed, 0 unchecked; 1 supported link checked, 1 unchecked, 32 unsupported. Doc findings returned: 0; finding-cap omissions: 0. npm-script analysis was `skipped` with `manifest-unavailable`; no script findings or omissions.
+- **Issues:** Both `good first issue` and `help wanted` queries were complete, one page each, uncapped and unsampled; neither query returned matches. 0 issue findings; 0 issue findings omitted.
+- **Limitations:** The root npm-script check could not run without a root `package.json`; `docs-limit` means not all available docs were selected. Unsupported and unchecked Markdown targets were not verified.
+
+### `go-chi/chi`
+
+- **Canonical identity / selection:** `go-chi/chi` — `https://github.com/go-chi/chi`; a Go HTTP router library with README and repository-local contribution guidance, selected for a non-Python, non-JavaScript project shape.
+- **Snapshot / requests:** Commit `167e1e3bd039d060696b99c8da4e876ae04f42c1`; `scannedAt` `2026-10-08T06:28:52.890Z`; `issuesFetchedAt` `2026-10-08T06:28:56.008Z`; `cached: false`; scan `complete`, `githubRequests: 7`, warnings `[]`.
+- **Tree / documents:** Complete, not truncated, 128 entries. `documents.selectionComplete: true`; root `README.md` and `CONTRIBUTING.md` were available, root `package.json` was unavailable, no additional `docs/` Markdown was selected, and there were no document omissions or skips.
+- **Markdown / npm scripts:** 2 Markdown documents analyzed, 0 unchecked; 3 supported links checked, 0 unchecked, 67 unsupported. Doc findings returned: 0; finding-cap omissions: 0. npm-script analysis was `skipped` with `manifest-unavailable`; no script findings or omissions.
+- **Issues:** Both queries were complete, one page each, uncapped and unsampled. The `good first issue` query returned no matches; `help wanted` returned 2 findings and omitted 0: #691, “Subdomain example in route_headers.go not working,” and #608, “Refactor throttle middleware tests as prone to intermittent failure.” Both carried the `help wanted` label and were unassigned in the returned evidence. The label does not establish difficulty or current availability.
+- **Limitations:** The root npm-script check was skipped because no root `package.json` was found. Unsupported links were not verified.
+
+### `squidfunk/mkdocs-material`
+
+- **Canonical identity / selection:** `squidfunk/mkdocs-material` — `https://github.com/squidfunk/mkdocs-material`; a Python documentation framework with a substantial `docs/` Markdown tree, chosen to exercise bounded docs selection and a documentation-project shape.
+- **Snapshot / requests:** Commit `6d3dc570d51064a3f55d189bd22c2390b07d46fe`; `scannedAt` `2026-10-08T06:28:56.060Z`; `issuesFetchedAt` `2026-10-08T06:29:05.318Z`; `cached: false`; scan `complete`, `githubRequests: 20`, warnings `[]`.
+- **Tree / documents:** Complete, not truncated, 15,604 entries. `documents.selectionComplete: true`; README, `CONTRIBUTING.md`, and root `package.json` were available, 12 additional docs Markdown files were selected, and none were skipped. `docs-limit` records additional docs omitted by the bounded selector.
+- **Markdown / npm scripts:** 14 Markdown documents analyzed, 0 unchecked; 116 supported links checked, 63 unchecked, 258 unsupported. Doc findings returned: 0; finding-cap omissions: 0. npm-script analysis was `checked`: 0 supported commands checked, 1 command skipped (`unsupportedCommand: 1` in an `unsupportedBlock: 1` block), and 0 findings produced or omitted.
+- **Issues:** Both queries were complete, one page each, uncapped and unsampled; neither query returned matches. 0 issue findings; 0 issue findings omitted.
+- **Limitations:** `docs-limit` means not all available docs were selected. The unsupported and unchecked Markdown targets were not verified. No generated-route finding was emitted, so this scan did not establish a generated-route false-positive pattern.
+
+### Phase 6C.2 finding review and retained files
+
+DocScout emitted **0 documentation findings** for each of the three new repositories, and each response reported `findingsOmitted: 0`. The retained analysis arrays contained no documentation finding records; the Go response contained only its two labeled-issue findings. Every documentation finding actually emitted in Phase 6C.2 was therefore reviewed (0 of 0). There are no per-finding IDs or classifications to list for this slice, and no omitted finding was reconstructed. No false-positive pattern or analyzer defect was observed.
+
+The complete response files are retained outside the worktree and were confirmed valid JSON, untracked, and unstaged:
+
+- `C:\Users\HP\AppData\Local\Temp\docscout-phase-6c2-20261008-2026-10-08T06-28-43-553Z\pallets-click.json` (124,018 bytes)
+- `C:\Users\HP\AppData\Local\Temp\docscout-phase-6c2-20261008-2026-10-08T06-28-43-553Z\go-chi-chi.json` (57,101 bytes)
+- `C:\Users\HP\AppData\Local\Temp\docscout-phase-6c2-20261008-2026-10-08T06-28-43-553Z\squidfunk-mkdocs-material.json` (2,540,126 bytes)
+
+No repository was cloned, analyzed code or commands were executed, dependencies were installed, arbitrary documentation links were fetched, GitHub issues or pull requests were created, or repository writes were made. AI remained disabled.
+
+## Overall six-repository result and remaining Phase 6 gate
+
+The real-repository sample now contains **6 unique public repositories**: `lukeed/clsx`, `vitest-dev/vitest`, `BurntSushi/ripgrep`, `pallets/click`, `go-chi/chi`, and `squidfunk/mkdocs-material`. The sample covers JavaScript/TypeScript, Rust, Go, and Python projects, including a monorepo, a CLI library, and documentation-heavy projects. Phase 6C.1 used three unique repositories over five total attempts; Phase 6C.2 used exactly three additional repositories with one primary scan each.
+
+Across the six final repository results, DocScout emitted **50 documentation findings and all 50 were manually reviewed**. The classification totals are:
+
+| Classification | Findings |
+|---|---:|
+| Supported/useful evidence | 0 |
+| Intentional/generated/project-convention behavior | 50 |
+| False positive | 0 |
+| Inconclusive | 0 |
+
+The 50 reviewed findings were all from the retained Vitest result and mapped to VitePress routes under its `docs/` source root; pinned project evidence and `cleanUrls` explained those paths, and the finding limitations qualified repository-snapshot absence. The other five repositories emitted no documentation findings. **Fourteen additional documentation findings were omitted by the existing result cap** in the Vitest result and were not inspected or reconstructed. Across the six final results, labeled-issue findings total 12 (10 from Phase 6C.1 and 2 from Phase 6C.2); issue-finding omissions total 0. All six repositories had complete, unsampled one-page-per-label query coverage in their retained final results.
+
+No analyzer correction remains required from this six-repository sample, and no genuine false-positive pattern or unresolved analyzer defect was found. Notable limits observed in real use are the existing 50-document-finding cap, bounded `docs/` selection (`docs-limit` appeared for Vitest, Click, and MkDocs Material), unsupported/unchecked links that are not verified, and root-only npm-script analysis being skipped when Python or Go projects have no root `package.json`. Empty finding sets describe only the checked scope; they do not establish that a repository has no problems. No success rate or accuracy percentage is inferred.
+
+**Phase 6C is complete. Phase 6 remains incomplete** until its release documentation and final verification gate are completed. Full test suite, full E2E, production smoke, and final release build checks were deferred as requested; no application or analyzer code changed, and no commit or push was made.

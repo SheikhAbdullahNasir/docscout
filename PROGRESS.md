@@ -27,7 +27,9 @@ Approved source: `PROJECT_SPEC.md` version 1.0. Updated October 8, 2026.
 - [ ] Phase 6 — release readiness and real-repository validation.
   - [x] Phase 6A — fresh-start documentation and command/configuration accuracy (October 8, 2026).
   - [x] Phase 6B — release wording, deployment guide, and local production-mode verification (October 8, 2026).
-  - [x] Phase 6C.1 — controlled validation and three unique live repositories; complete October 8, 2026 (3 unique public repositories, 5 total attempts).
+  - [x] Phase 6C — real-repository validation complete October 8, 2026 (six unique public repositories across Phase 6C.1 and Phase 6C.2).
+    - [x] Phase 6C.1 — controlled validation and three unique live repositories; complete October 8, 2026 (3 unique public repositories, 5 total attempts).
+    - [x] Phase 6C.2 — retained-response validation of three additional unique public repositories; complete October 8, 2026 (exactly 3 scans, one per repository).
 
 ## Phase 0 decisions and completed work
 
@@ -503,4 +505,17 @@ No live GitHub scan, public deployment, external hosting setup, or purchase was 
 - Controlled verification: `npm test -- apps/server/src/analyzers/localLinks.test.ts apps/server/src/analyzers/npmScripts.test.ts` passed (2 files, 107 tests). The request-count fix also passed its focused tests, typecheck, and lint as recorded above. The fifth live scan and full finding/issue review are documented in `docs/VALIDATION.md`. Full suite, E2E, final production gate, and any new lint/typecheck/build run were intentionally deferred.
 - Post-edit documentation verification: `git diff --check` passed and the untracked `docs/VALIDATION.md` trailing-whitespace check passed. The full response capture remains outside the worktree and is neither tracked nor staged.
 
-Phase 6 remains incomplete.
+## Phase 6C.2 — additional real-repository validation (October 8, 2026; complete)
+
+- Selected exactly three new public repositories and confirmed their GitHub repository pages were public before scanning: `pallets/click` (Python CLI project with a docs tree), `go-chi/chi` (Go router library), and `squidfunk/mkdocs-material` (documentation framework with a substantial docs tree). No Phase 6C.1 repository was reused.
+- Ran exactly one primary `POST /api/repository/snapshot` scan per selected repository through the existing compiled server/application flow. Each returned HTTP 200 and `status: ready`, with `cached: false`, `scan.status: complete`, no warnings, and complete non-truncated tree coverage. No retry or extra scan occurred.
+- `pallets/click`: commit `2247b35ea1c47c727d7a06e51fa280e12a863ff6`; scanned `2026-10-08T06:28:43.612Z`; issues fetched `2026-10-08T06:28:52.825Z`; `githubRequests: 19`; 204 tree entries; 14 Markdown documents analyzed; 1 checked, 1 unchecked, 32 unsupported links; 0 documentation findings returned/omitted; npm analysis skipped because the root manifest was unavailable; 0 issue findings/omissions, complete one-page-per-label coverage.
+- `go-chi/chi`: commit `167e1e3bd039d060696b99c8da4e876ae04f42c1`; scanned `2026-10-08T06:28:52.890Z`; issues fetched `2026-10-08T06:28:56.008Z`; `githubRequests: 7`; 128 tree entries; 2 Markdown documents analyzed; 3 checked, 0 unchecked, 67 unsupported links; 0 documentation findings returned/omitted; npm analysis skipped because the root manifest was unavailable; 2 `help wanted` issue findings (#691 and #608), 0 omissions, complete one-page-per-label coverage.
+- `squidfunk/mkdocs-material`: commit `6d3dc570d51064a3f55d189bd22c2390b07d46fe`; scanned `2026-10-08T06:28:56.060Z`; issues fetched `2026-10-08T06:29:05.318Z`; `githubRequests: 20`; 15,604 tree entries; 14 Markdown documents analyzed; 116 checked, 63 unchecked, 258 unsupported links; 0 documentation findings returned/omitted; root npm analysis checked 0 commands, skipped 1 unsupported command/block, and produced 0 findings; 0 issue findings/omissions, complete one-page-per-label coverage.
+- All three trees were complete and not truncated. Document selection was complete; Click and MkDocs Material reported `docs-limit`, while Go Chi reported no document omissions. The existing 50-result documentation cap omitted 0 findings in these three responses.
+- Manually reviewed every emitted documentation finding: 0 findings were emitted across the three new repositories, and all three responses reported 0 documentation findings omitted. No false-positive pattern or analyzer defect was observed. Across the six-repository sample, the totals are 50 emitted documentation findings reviewed: 0 supported/useful, 50 intentional/generated/project-convention, 0 false positives, and 0 inconclusive; 14 additional Vitest findings were omitted by the cap and not inspected. The six final results emitted 12 labeled-issue findings and omitted 0 issue findings. No labels were treated as proof of difficulty.
+- Complete raw JSON responses were retained before parsing in `C:\Users\HP\AppData\Local\Temp\docscout-phase-6c2-20261008-2026-10-08T06-28-43-553Z\` (124,018; 57,101; and 2,540,126 bytes respectively). All files parsed as JSON and were confirmed outside the worktree, untracked, and unstaged.
+- No cloning, repository-code/command execution, dependency installation, arbitrary documentation-link fetching, AI use, or GitHub writes occurred. No application/analyzer code changed. No commit or push was made.
+- Targeted verification for this documentation slice: `git status`, `git diff --check`, and a trailing-whitespace check on `docs/VALIDATION.md`. Full tests, full E2E, production smoke, and final release build verification remain deferred to the final Phase 6 gate.
+
+Phase 6C real-repository validation is complete. Phase 6 remains incomplete pending release documentation and final verification.
