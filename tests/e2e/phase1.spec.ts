@@ -309,6 +309,8 @@ test('displays the typed Phase 1 snapshot safely with archived and partial cover
 
   await expect(page.getByRole('status')).toContainText('Repository analysis complete.');
   await expect(page.getByRole('heading', { name: 'Canonical/Repo' })).toBeVisible();
+  await expect(page.getByText('REPOSITORY SNAPSHOT', { exact: true })).toBeVisible();
+  await expect(page.getByText('PHASE 1 REPOSITORY SNAPSHOT', { exact: true })).toHaveCount(0);
   await expect(page.getByText('Archived repository')).toBeVisible();
   await expect(page.getByText('release/docs', { exact: true })).toBeVisible();
   await expect(page.getByText('1234567890ab', { exact: true })).toBeVisible();

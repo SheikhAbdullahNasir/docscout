@@ -16,7 +16,7 @@ The core MVP (Phases 0–4) is implemented. For one public `github.com` reposito
 
 Issue data is fetched from GitHub when a scan runs, so it can change independently of the pinned file snapshot. Labels do not prove that an issue is easy, still available, or a good fit; verify it on GitHub before acting.
 
-Phase 5 AI is optional and has not been implemented. It is disabled and not required for the core MVP. Phase 6 release work is in progress: this README is the Phase 6A fresh-start documentation slice; validation and deployment guides are planned for a later Phase 6 step.
+Phase 5 AI is optional and has not been implemented. It is disabled and not required for the core MVP. Phase 6 release work is in progress: this README records the Phase 6A fresh-start documentation, and Phase 6B adds the deployment guide. Real-repository validation remains planned.
 
 ## Prerequisites
 
@@ -92,13 +92,13 @@ npm run build
 npm start
 ```
 
-Open <http://127.0.0.1:3001>. The server serves the built frontend and API from the same origin; `PORT` can select another port. The current server binds to loopback, so this is a local production-mode check, not a public deployment. Deployment guidance will be added at `docs/DEPLOYMENT.md` in a later Phase 6 step.
+Open <http://127.0.0.1:3001>. The server serves the built frontend and API from the same origin; `PORT` can select another port. The current server binds to loopback, so this is a local production-mode check, not a public deployment. See [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) for deployment constraints and production smoke steps.
 
 ## Project and release documentation
 
 - [`PROJECT_SPEC.md`](PROJECT_SPEC.md) is the product and safety source of truth.
 - [`PROGRESS.md`](PROGRESS.md) records phase status, decisions, and verification evidence.
 - `docs/VALIDATION.md` is the planned real-repository validation report; it has not been created yet.
-- `docs/DEPLOYMENT.md` is the planned deployment guide; it has not been created yet.
+- [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) documents the production startup path, deployment constraints, security boundaries, and smoke procedure.
 
 The core MVP is implemented through Phase 4. Phase 5 remains optional and disabled. Do not treat a successful local build as a public release or deployment.

@@ -26,6 +26,7 @@ Approved source: `PROJECT_SPEC.md` version 1.0. Updated October 8, 2026.
 - [ ] Phase 5 — optional AI; not requested, disabled.
 - [ ] Phase 6 — release readiness and real-repository validation.
   - [x] Phase 6A — fresh-start documentation and command/configuration accuracy (October 8, 2026).
+  - [x] Phase 6B — release wording, deployment guide, and local production-mode verification (October 8, 2026).
 
 ## Phase 0 decisions and completed work
 
@@ -463,3 +464,23 @@ The next recommended roadmap step is **Phase 6 — release readiness and real-re
 | `git diff --check` | Passed for the documentation changes. Git emitted its normal LF-to-CRLF working-copy notice for `README.md` and `PROGRESS.md`. |
 
 No install, development server, build, lint, typecheck, test, production smoke, E2E browser run, or live GitHub request was run for Phase 6A. These checks were outside the requested documentation-only gate; existing Phase 4 verification evidence remains recorded above.
+
+## Phase 6B — deployment guide and production readiness (October 8, 2026)
+
+- Changed the result summary eyebrow from `PHASE 1 REPOSITORY SNAPSHOT` to `REPOSITORY SNAPSHOT`. Added one assertion to the existing result-view browser test; no result behavior, accessibility, findings, coverage, filtering, copy action, or error state changed.
+- Added `docs/DEPLOYMENT.md` with the repository's Node engine range, lockfile install/build/start commands, same-origin production serving, `PORT`, optional server-side `GITHUB_TOKEN`, `AI_PROVIDER=none`, secret handling and the `VITE_` prohibition, HTTPS and explicit trusted-proxy requirements, scan/request/runtime limits, per-process coordination limits and single-instance starting point, static-host limitation, untrusted-repository/read-only behavior, owner-controlled deployment boundary, and a concise production smoke procedure.
+- Updated only README status and deployment-guide references that became outdated when the guide was added.
+- Deployment constraint recorded for future host selection: the compiled server binds to `127.0.0.1` and exposes no bind-host setting. A real deployment needs HTTPS ingress/reverse proxy connectivity to that loopback listener; a platform that can reach only an externally bound app port cannot reach the server as configured. No architecture or network binding changes were made.
+
+### Phase 6B verification
+
+| Command/check | Actual result |
+|---|---|
+| Focused Playwright result-view test, first with the new assertion | Failed as expected because `REPOSITORY SNAPSHOT` was absent before the source copy change. |
+| `npm run test:e2e -- --grep "displays the typed Phase 1 snapshot safely"` | Passed: 1 focused result-view test; the replacement label rendered and the old result label was absent, with archived and partial coverage content still visible. |
+| `npm run build` | Passed: production Vite frontend build and compiled server. |
+| `npm run test:production` | Passed: production server health, built HTML, JavaScript/CSS assets, and unknown API route 404. |
+| `npm start` plus local HTTP assertions | Passed at `127.0.0.1:3001`: `GET /api/health` returned `{"status":"ok"}`, `/` served the DocScout frontend, and `/api/unknown` returned a safe JSON 404 with code `NOT_FOUND`. Server was stopped after the check. |
+| `git diff --check` and changed-file trailing-whitespace review | Passed; no whitespace errors or trailing whitespace were found. |
+
+No live GitHub scan, public deployment, external hosting setup, or purchase was performed. Full E2E, full test suite, lint, and typecheck were deferred as outside this focused Phase 6B gate. Phase 6 overall remains incomplete; real-repository validation is still future Phase 6 work.

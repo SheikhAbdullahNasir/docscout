@@ -488,7 +488,7 @@ export function Results({ result }: { result: RepositorySnapshotResponse }) {
     <div className="results">
       <p role="status" className="visually-hidden">{result.scan ? 'Repository analysis returned partial coverage.' : 'Repository analysis complete.'}</p>
       <section className="repository-summary" aria-labelledby="repository-heading">
-        <p className="eyebrow">PHASE 1 REPOSITORY SNAPSHOT</p>
+        <p className="eyebrow">REPOSITORY SNAPSHOT</p>
         <h2 id="repository-heading">{result.repository.owner}/{result.repository.name}</h2>
         <p><a href={result.repository.url} target="_blank" rel="noreferrer">Open repository on GitHub</a></p>
         {result.repository.archived && <p className="archive-notice">Archived repository</p>}
