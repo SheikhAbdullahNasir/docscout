@@ -106,7 +106,7 @@ describe('default-branch snapshot', () => {
   it.each([404, 409, 422, 500])('does not mistake commit HTTP %i for an empty repository', async (status) => {
     const fetcher = vi.fn<typeof fetch>().mockResolvedValue(Response.json({ message: 'secret upstream conflict' }, { status }));
     await expect(new GitHubClient({ fetcher }).getSnapshot(repository)).rejects.toMatchObject({ code: 'COMMIT_LOOKUP_FAILED', status: 502 });
-    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(fetcher).toHaveBeenCalledTimes(status === 500 ? 2 : 1);
   });
 
   it.each(['commit', 'tree'])('retains safe auth, cooldown and network errors during %s lookup', async (stage) => {
@@ -125,6 +125,7 @@ describe('default-branch snapshot', () => {
   it.each([404, 409, 500])('handles tree HTTP %i as failure', async (status) => {
     const fetcher = vi.fn<typeof fetch>().mockResolvedValueOnce(Response.json(commit))
       .mockResolvedValueOnce(Response.json({ message: 'secret' }, { status }));
+    if (status === 500) fetcher.mockResolvedValueOnce(Response.json({ message: 'secret' }, { status }));
     await expect(new GitHubClient({ fetcher }).getSnapshot(repository)).rejects.toMatchObject({ code: 'TREE_LOOKUP_FAILED', status: 502 });
   });
 

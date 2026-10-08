@@ -9,11 +9,31 @@ import { retrieveDocuments, type DocumentCandidate } from './documents.js';
 import { retrieveIssues } from './issues.js';
 import { commitSnapshot, recursiveTree, validBranch } from './snapshot.js';
 import { abortable, isResourceError, ScanBudget } from './scanBudget.js';
+import { githubRequestQueue, type GitHubRequestQueue } from './requestQueue.js';
 
 const API_BASE = 'https://api.github.com';
 const RESPONSE_LIMIT = 2 * 1024 * 1024;
+const REQUEST_TIMEOUT_MS = 10_000;
+const MAX_COOLDOWN_MS = 24 * 60 * 60 * 1000;
+const MAX_DATE_MS = 8.64e15;
+const RETRYABLE_5XX = new Set([500, 502, 503, 504]);
 const EMPTY_REPOSITORY = Symbol('empty-repository');
 const CONTENT_UNAVAILABLE = Symbol('content-unavailable');
+type RequestStage = 'commit' | 'tree' | 'content' | 'issues';
+type RequestResult = { value: unknown; headers: Headers };
+
+class TransientNetworkFailure extends Error {}
+
+class RetryableAttemptFailure extends Error {
+  constructor(readonly finalError: ApplicationError, readonly contentUnavailable = false) { super(); }
+}
+
+class GitHubCooldownError extends ApplicationError {
+  constructor(readonly retryAtMs?: number) {
+    super(503, 'GITHUB_COOLDOWN', 'GitHub requests are temporarily limited. Please retry later.',
+      retryAtMs === undefined ? undefined : new Date(retryAtMs).toISOString());
+  }
+}
 
 function upstreamError(message = 'GitHub returned an unavailable or invalid response. Please try again later.') {
   return new ApplicationError(502, 'GITHUB_UPSTREAM_FAILURE', message);
@@ -27,7 +47,14 @@ async function boundedJson(response: Response, signal: AbortSignal, checkTime: (
   try {
     while (true) {
       checkTime();
-      const { done, value } = await abortable(reader.read(), signal);
+      let chunk: ReadableStreamReadResult<Uint8Array>;
+      try { chunk = await abortable(reader.read(), signal); }
+      catch (error) {
+        if (signal.aborted) throw error;
+        if (error instanceof TypeError) throw new TransientNetworkFailure();
+        throw error;
+      }
+      const { done, value } = chunk;
       checkTime();
       if (done) break;
       size += value.byteLength;
@@ -68,15 +95,55 @@ function publicMetadata(value: unknown): PublicRepositoryMetadata {
   return { owner, name, url, private: false, archived: data.archived, defaultBranch: branch };
 }
 
-function retryTime(headers: Headers): string | undefined {
-  const retry = headers.get('retry-after');
-  const reset = headers.get('x-ratelimit-reset');
+function retryTime(headers: Headers, now: number): number | undefined {
+  const retry = headers.get('retry-after')?.trim();
+  const reset = headers.get('x-ratelimit-reset')?.trim();
   const candidates: number[] = [];
-  if (retry && /^\d+$/.test(retry)) candidates.push(Date.now() + Number(retry) * 1000);
-  else if (retry) candidates.push(Date.parse(retry));
-  if (reset && /^\d+$/.test(reset)) candidates.push(Number(reset) * 1000);
-  const times = candidates.filter((time) => Number.isFinite(time) && time >= Date.now() && time <= 8.64e15);
-  return times.length ? new Date(Math.max(...times)).toISOString() : undefined;
+  if (retry && /^\d+$/.test(retry)) {
+    const seconds = Number(retry);
+    const time = now + seconds * 1000;
+    if (Number.isSafeInteger(seconds) && seconds <= MAX_COOLDOWN_MS / 1000 && Number.isSafeInteger(time)) candidates.push(time);
+  } else if (retry && /^(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun), \d{2} (?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) \d{4} \d{2}:\d{2}:\d{2} GMT$/.test(retry)) {
+    const time = Date.parse(retry);
+    if (Number.isFinite(time) && new Date(time).toUTCString() === retry) candidates.push(time);
+  }
+  if (reset && /^\d+$/.test(reset)) {
+    const seconds = Number(reset);
+    const time = seconds * 1000;
+    if (Number.isSafeInteger(seconds) && Number.isSafeInteger(time)) candidates.push(time);
+  }
+  const safeTimes = candidates.filter((time) => Number.isFinite(time) && time >= now
+    && time <= MAX_DATE_MS && time - now <= MAX_COOLDOWN_MS);
+  // Honor every valid lower bound; the later validated time is the earliest safe retry.
+  return safeTimes.length ? Math.max(...safeTimes) : undefined;
+}
+
+function final5xxError(stage?: RequestStage): ApplicationError {
+  if (stage === 'commit') return new ApplicationError(502, 'COMMIT_LOOKUP_FAILED',
+    'The default branch commit could not be resolved. Please check the repository and retry.');
+  if (stage === 'tree') return new ApplicationError(502, 'TREE_LOOKUP_FAILED',
+    'The pinned repository tree could not be retrieved. Path coverage is unavailable.');
+  return upstreamError();
+}
+
+function defaultSleep(milliseconds: number, signal: AbortSignal): Promise<void> {
+  if (milliseconds <= 0) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    const finish = () => {
+      clearTimeout(timer);
+      signal.removeEventListener('abort', onAbort);
+      resolve();
+    };
+    const onAbort = () => {
+      clearTimeout(timer);
+      signal.removeEventListener('abort', onAbort);
+      reject(signal.reason);
+    };
+    const timer = setTimeout(finish, milliseconds);
+    timer.unref?.();
+    signal.addEventListener('abort', onAbort, { once: true });
+    if (signal.aborted) onAbort();
+  });
 }
 
 export class GitHubClient {
@@ -84,12 +151,23 @@ export class GitHubClient {
   private readonly token?: string;
   private readonly now: () => Date;
   private readonly clock: () => number;
+  private readonly sleep: (milliseconds: number, signal: AbortSignal) => Promise<void>;
+  private readonly queue: GitHubRequestQueue;
 
-  constructor(options: { fetcher?: typeof fetch; token?: string; now?: () => Date; clock?: () => number } = {}) {
+  constructor(options: {
+    fetcher?: typeof fetch;
+    token?: string;
+    now?: () => Date;
+    clock?: () => number;
+    sleep?: (milliseconds: number, signal: AbortSignal) => Promise<void>;
+    queue?: GitHubRequestQueue;
+  } = {}) {
     this.fetcher = options.fetcher ?? fetch;
     this.token = options.token?.trim() || undefined;
     this.now = options.now ?? (() => new Date());
     this.clock = options.clock ?? Date.now;
+    this.sleep = options.sleep ?? defaultSleep;
+    this.queue = options.queue ?? githubRequestQueue;
   }
 
   createScanBudget() { return new ScanBudget({ now: this.clock }); }
@@ -191,17 +269,54 @@ export class GitHubClient {
     }, this.now);
   }
 
-  private async requestJson(path: string, budget: ScanBudget, options: { stage?: 'commit' | 'tree' | 'content' | 'issues' } = {}): Promise<unknown> {
+  private async requestJson(path: string, budget: ScanBudget, options: { stage?: RequestStage } = {}): Promise<unknown> {
     return (await this.requestResponse(path, budget, options)).value;
   }
 
-  private async requestResponse(path: string, budget: ScanBudget, options: { stage?: 'commit' | 'tree' | 'content' | 'issues' } = {}) {
-    budget.consumeRequest();
+  private async requestResponse(path: string, budget: ScanBudget, options: { stage?: RequestStage } = {}): Promise<RequestResult> {
+    let retried = false;
+    while (true) {
+      try {
+        return await this.queue.run(budget.signal, () => budget.consumeRequest(),
+          () => this.requestAttempt(path, budget, options));
+      } catch (error) {
+        if (error instanceof GitHubCooldownError) {
+          const delay = error.retryAtMs === undefined ? undefined : Math.max(0, error.retryAtMs - this.clock());
+          if (!retried && delay !== undefined && this.canRetry(budget, delay)) {
+            retried = true;
+            if (delay > 0) await abortable(this.sleep(delay, budget.signal), budget.signal);
+            budget.checkDeadline();
+            continue;
+          }
+          throw error;
+        }
+
+        const retryable = error instanceof RetryableAttemptFailure
+          || error instanceof ApplicationError && error.code === 'GITHUB_REQUEST_TIMEOUT' && !budget.signal.aborted;
+        if (!retried && retryable && this.canRetry(budget)) {
+          retried = true;
+          continue;
+        }
+        if (isResourceError(error)) budget.note(error);
+        if (error instanceof RetryableAttemptFailure) {
+          if (error.contentUnavailable) return { value: CONTENT_UNAVAILABLE, headers: new Headers() };
+          throw error.finalError;
+        }
+        throw error;
+      }
+    }
+  }
+
+  private canRetry(budget: ScanBudget, delayMs = 0) {
+    return !budget.signal.aborted && budget.remainingRequests > 0 && delayMs < budget.remainingTimeMs;
+  }
+
+  private async requestAttempt(path: string, budget: ScanBudget, options: { stage?: RequestStage }): Promise<RequestResult> {
     const controller = new AbortController();
     const remainingAtStart = budget.remainingTimeMs;
     const timeoutError = () => new ApplicationError(504, 'GITHUB_REQUEST_TIMEOUT',
       'A GitHub request reached its 10-second timeout. Only completed repository evidence is shown.');
-    const timer = setTimeout(() => controller.abort(timeoutError()), 10_000);
+    const timer = setTimeout(() => controller.abort(timeoutError()), REQUEST_TIMEOUT_MS);
     timer.unref?.();
     const signal = AbortSignal.any([budget.signal, controller.signal]);
     const checkTime = () => {
@@ -217,10 +332,16 @@ export class GitHubClient {
     if (this.token) headers.Authorization = `Bearer ${this.token}`;
     let response: Response | undefined;
     try {
-      response = await abortable(this.fetcher(
-        `${API_BASE}${path}`,
-        { method: 'GET', headers, redirect: 'manual', signal },
-      ), signal);
+      try {
+        response = await abortable(this.fetcher(
+          `${API_BASE}${path}`,
+          { method: 'GET', headers, redirect: 'manual', signal },
+        ), signal);
+      } catch (error) {
+        if (signal.aborted) throw error;
+        if (error instanceof TypeError) throw new TransientNetworkFailure();
+        throw error;
+      }
       checkTime();
       if (response.status === 200) return { value: await boundedJson(response, signal, checkTime,
         options.stage === 'tree' ? 10 * 1024 * 1024 : RESPONSE_LIMIT), headers: new Headers(response.headers) };
@@ -233,22 +354,33 @@ export class GitHubClient {
         } catch (error) { if (isResourceError(error)) throw error; /* Unconfirmed conflicts remain commit failures. */ }
         throw new ApplicationError(502, 'COMMIT_LOOKUP_FAILED', 'The default branch commit could not be resolved. Please check the repository and retry.');
       }
+      if (RETRYABLE_5XX.has(response.status)) {
+        if (response.body) await abortable(response.body.cancel(), signal);
+        throw new RetryableAttemptFailure(final5xxError(options.stage), options.stage === 'content');
+      }
       if (options.stage === 'content' && response.status !== 401 && response.status !== 403 && response.status !== 429) {
         if (response.body) await abortable(response.body.cancel(), signal);
         return { value: CONTENT_UNAVAILABLE, headers: new Headers(response.headers) };
       }
       // Do not follow redirects, including GitHub repository-renaming redirects.
       // Every status consumes/cancels its body; errors never copy upstream messages.
-      let limited = response.status === 429 || response.headers.get('x-ratelimit-remaining') === '0'
-        || response.headers.has('retry-after');
-      if (response.status === 403 && !limited) {
+      const retryAtMs = retryTime(response.headers, this.clock());
+      const primaryLimit = response.headers.get('x-ratelimit-remaining')?.trim() === '0';
+      let secondaryLimit = false;
+      let inspectedForbiddenBody = false;
+      if (response.status === 403 && !primaryLimit && retryAtMs === undefined) {
+        inspectedForbiddenBody = true;
         try {
           const message = record(await boundedJson(response, signal, checkTime))?.message;
-          limited = typeof message === 'string' && /(?:secondary )?rate limit|abuse detection/i.test(message);
-        } catch (error) { if (isResourceError(error)) throw error; /* Malformed error bodies remain safe permission errors. */ }
-      } else {
-        if (response.body) await abortable(response.body.cancel(), signal);
+          secondaryLimit = typeof message === 'string' && /(?:secondary )?rate limit|abuse detection/i.test(message);
+        } catch (error) {
+          if (isResourceError(error) || error instanceof TransientNetworkFailure) throw error;
+          // Malformed error bodies remain safe permission errors.
+        }
       }
+      const limited = response.status === 429 || primaryLimit
+        || response.status === 403 && (retryAtMs !== undefined || secondaryLimit);
+      if (!inspectedForbiddenBody && response.body) await abortable(response.body.cancel(), signal);
       if (response.status === 404 && !options.stage) {
         throw new ApplicationError(404, 'REPOSITORY_UNAVAILABLE', 'Repository unavailable. Check the URL; it may be private or missing.');
       }
@@ -256,7 +388,7 @@ export class GitHubClient {
         throw new ApplicationError(502, 'GITHUB_AUTH_ERROR', 'GitHub rejected the server credentials. Check the server GITHUB_TOKEN configuration.');
       }
       if ((response.status === 403 || response.status === 429) && limited) {
-        throw new ApplicationError(503, 'GITHUB_COOLDOWN', 'GitHub requests are temporarily limited. Please retry later.', retryTime(response.headers));
+        throw new GitHubCooldownError(retryAtMs);
       }
       if (response.status === 403) {
         throw new ApplicationError(502, 'GITHUB_FORBIDDEN', 'GitHub denied this request. Check repository availability and server token permissions.');
@@ -273,10 +405,13 @@ export class GitHubClient {
         error = new ApplicationError(504, 'GITHUB_REQUEST_TIMEOUT', 'A GitHub request timed out. Please try again later.');
       }
       if (isResourceError(error)) {
-        budget.note(error);
         controller.abort(error);
         if (response?.body && !response.body.locked) void response.body.cancel().catch(() => undefined);
         throw error;
+      }
+      if (error instanceof GitHubCooldownError || error instanceof RetryableAttemptFailure) throw error;
+      if (error instanceof TransientNetworkFailure) {
+        throw new RetryableAttemptFailure(upstreamError('GitHub could not be reached. Please try again later.'), options.stage === 'content');
       }
       if (options.stage === 'content' && (!(error instanceof ApplicationError)
         || error.code === 'GITHUB_UPSTREAM_FAILURE')) return { value: CONTENT_UNAVAILABLE, headers: new Headers() };

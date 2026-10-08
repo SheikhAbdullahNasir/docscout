@@ -183,7 +183,8 @@ describe('pinned selected repository documents', () => {
     ['redirect', () => new Response(null, { status: 302, headers: { Location: 'https://evil.test/file' } })],
     ['malformed JSON', () => new Response('{bad')],
   ])('turns optional content %s into an unavailable skip', async (_label, response) => {
-    const result = await new GitHubClient({ fetcher: fetchFor([blob('README.md', 'text')], [response()]) })
+    const responses = _label === 'server error' ? [response(), response()] : [response()];
+    const result = await new GitHubClient({ fetcher: fetchFor([blob('README.md', 'text')], responses) })
       .getSnapshot(repository);
     expect(result).toMatchObject({ status: 'ready', snapshot: { documents: {
       readme: { status: 'unavailable' }, skipped: [{ path: 'README.md', reason: 'unavailable' }],

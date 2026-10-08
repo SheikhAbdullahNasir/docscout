@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { GitHubClient } from './client.js';
+import { ScanBudget } from './scanBudget.js';
 import { parseRepositoryUrl, type ValidatedRepository } from '../security/repositoryUrl.js';
 
 const metadata = {
@@ -9,6 +10,19 @@ const metadata = {
   ignored_field: 'not returned',
 };
 const input = parseRepositoryUrl('https://github.com/owner/repo');
+
+function fakeTime(start = 1_800_000_000_000) {
+  let current = start;
+  return {
+    clock: () => current,
+    now: () => new Date(current),
+    sleep: vi.fn(async (milliseconds: number, signal: AbortSignal) => {
+      signal.throwIfAborted();
+      current += milliseconds;
+    }),
+    advance: (milliseconds: number) => { current += milliseconds; },
+  };
+}
 
 describe('GitHub metadata client', () => {
   it.each([undefined, '', '  ', 'test-token-sentinel'])('uses fixed API host and required headers; token=%s', async (token) => {
@@ -43,9 +57,9 @@ describe('GitHub metadata client', () => {
   });
 
   it.each([
-    [404, 'REPOSITORY_UNAVAILABLE', 404], [401, 'GITHUB_AUTH_ERROR', 502],
-    [403, 'GITHUB_FORBIDDEN', 502], [429, 'GITHUB_COOLDOWN', 503],
-    [500, 'GITHUB_UPSTREAM_FAILURE', 502], [302, 'GITHUB_UPSTREAM_FAILURE', 502],
+    [400, 'GITHUB_UPSTREAM_FAILURE', 502], [404, 'REPOSITORY_UNAVAILABLE', 404], [401, 'GITHUB_AUTH_ERROR', 502],
+    [403, 'GITHUB_FORBIDDEN', 502], [429, 'GITHUB_COOLDOWN', 503], [501, 'GITHUB_UPSTREAM_FAILURE', 502],
+    [302, 'GITHUB_UPSTREAM_FAILURE', 502],
   ])('maps HTTP %i to a safe application error', async (status, code, appStatus) => {
     const fetcher = vi.fn<typeof fetch>().mockResolvedValue(Response.json({ message: 'leaked-token-sentinel' }, { status, headers: { Location: 'https://evil.test/' } }));
     try {
@@ -58,12 +72,130 @@ describe('GitHub metadata client', () => {
     expect(fetcher).toHaveBeenCalledTimes(1);
   });
 
-  it.each([
-    { 'x-ratelimit-remaining': '0', 'x-ratelimit-reset': '2000000000' },
-    { 'retry-after': '60' },
-  ])('distinguishes cooldown from forbidden on 403', async (headers) => {
-    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(new Response('', { status: 403, headers }));
-    await expect(new GitHubClient({ fetcher }).getRepository(input)).rejects.toMatchObject({ code: 'GITHUB_COOLDOWN', status: 503, retryAt: expect.any(String) });
+  it('retries a selected 5xx response once and counts both attempts', async () => {
+    const fetcher = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(new Response('', { status: 500 }))
+      .mockResolvedValueOnce(Response.json(metadata));
+    const budget = new ScanBudget();
+    try {
+      await expect(new GitHubClient({ fetcher }).getRepository(input, budget)).resolves.toMatchObject({ name: 'CanonicalRepo' });
+      expect(fetcher).toHaveBeenCalledTimes(2);
+      expect(budget.requestsUsed).toBe(2);
+    } finally { budget.dispose(); }
+  });
+
+  it('retries one selected network failure and returns the successful retry', async () => {
+    const fetcher = vi.fn<typeof fetch>()
+      .mockRejectedValueOnce(new TypeError('temporary network failure'))
+      .mockResolvedValueOnce(Response.json(metadata));
+    const budget = new ScanBudget();
+    try {
+      await expect(new GitHubClient({ fetcher }).getRepository(input, budget)).resolves.toMatchObject({ name: 'CanonicalRepo' });
+      expect(fetcher).toHaveBeenCalledTimes(2);
+      expect(budget.requestsUsed).toBe(2);
+    } finally { budget.dispose(); }
+  });
+
+  it('stops after the second transient failure', async () => {
+    const fetcher = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(new Response('', { status: 502 }))
+      .mockResolvedValueOnce(new Response('', { status: 503 }))
+      .mockResolvedValueOnce(Response.json(metadata));
+    await expect(new GitHubClient({ fetcher }).getRepository(input)).rejects.toMatchObject({ code: 'GITHUB_UPSTREAM_FAILURE', status: 502 });
+    expect(fetcher).toHaveBeenCalledTimes(2);
+  });
+
+  it('suppresses a retry when the request budget has no remaining capacity', async () => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(new Response('', { status: 500 }));
+    const budget = new ScanBudget();
+    for (let attempt = 0; attempt < 29; attempt += 1) budget.consumeRequest();
+    try {
+      await expect(new GitHubClient({ fetcher }).getRepository(input, budget)).rejects.toMatchObject({ code: 'GITHUB_UPSTREAM_FAILURE', status: 502 });
+      expect(fetcher).toHaveBeenCalledTimes(1);
+      expect(budget.requestsUsed).toBe(30);
+    } finally { budget.dispose(); }
+  });
+
+  it('waits for a valid retry-after cooldown and retries within the deadline', async () => {
+    const time = fakeTime();
+    const fetcher = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(new Response('', { status: 429, headers: { 'retry-after': '2' } }))
+      .mockResolvedValueOnce(Response.json(metadata));
+    const budget = new ScanBudget({ now: time.clock });
+    try {
+      await expect(new GitHubClient({ fetcher, clock: time.clock, now: time.now, sleep: time.sleep }).getRepository(input, budget))
+        .resolves.toMatchObject({ name: 'CanonicalRepo' });
+      expect(time.sleep).toHaveBeenCalledWith(2000, expect.any(AbortSignal));
+      expect(fetcher).toHaveBeenCalledTimes(2);
+      expect(budget.requestsUsed).toBe(2);
+    } finally { budget.dispose(); }
+  });
+
+  it('accepts a valid HTTP-date retry-after value', async () => {
+    const time = fakeTime();
+    const retryAt = new Date(time.clock() + 4_000).toUTCString();
+    const fetcher = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(new Response('', { status: 429, headers: { 'retry-after': retryAt } }))
+      .mockResolvedValueOnce(Response.json(metadata));
+    await expect(new GitHubClient({ fetcher, clock: time.clock, now: time.now, sleep: time.sleep }).getRepository(input))
+      .resolves.toMatchObject({ name: 'CanonicalRepo' });
+    expect(time.sleep).toHaveBeenCalledWith(4_000, expect.any(AbortSignal));
+    expect(fetcher).toHaveBeenCalledTimes(2);
+  });
+
+  it('uses a valid primary rate-limit reset time for its one retry', async () => {
+    const time = fakeTime();
+    const resetSeconds = Math.floor(time.clock() / 1000) + 3;
+    const fetcher = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(new Response('', { status: 403, headers: { 'x-ratelimit-remaining': '0', 'x-ratelimit-reset': String(resetSeconds) } }))
+      .mockResolvedValueOnce(Response.json(metadata));
+    const budget = new ScanBudget({ now: time.clock });
+    try {
+      await expect(new GitHubClient({ fetcher, clock: time.clock, now: time.now, sleep: time.sleep }).getRepository(input, budget))
+        .resolves.toMatchObject({ name: 'CanonicalRepo' });
+      expect(time.sleep).toHaveBeenCalledWith(3000, expect.any(AbortSignal));
+      expect(fetcher).toHaveBeenCalledTimes(2);
+    } finally { budget.dispose(); }
+  });
+
+  it('rejects malformed or unreasonably distant cooldown values without sleeping', async () => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(new Response('', {
+      status: 429, headers: { 'retry-after': '-4', 'x-ratelimit-reset': '9999999999' },
+    }));
+    const time = fakeTime();
+    await expect(new GitHubClient({ fetcher, clock: time.clock, sleep: time.sleep }).getRepository(input))
+      .rejects.toMatchObject({ code: 'GITHUB_COOLDOWN', status: 503, retryAt: undefined });
+    expect(time.sleep).not.toHaveBeenCalled();
+    expect(fetcher).toHaveBeenCalledTimes(1);
+  });
+
+  it('returns retry guidance without sleeping when cooldown exceeds the remaining deadline', async () => {
+    const time = fakeTime();
+    const budget = new ScanBudget({ now: time.clock });
+    time.advance(56_000);
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(new Response('', { status: 429, headers: { 'retry-after': '60' } }));
+    try {
+      await expect(new GitHubClient({ fetcher, clock: time.clock, now: time.now, sleep: time.sleep }).getRepository(input, budget))
+        .rejects.toMatchObject({ code: 'GITHUB_COOLDOWN', status: 503, retryAt: expect.any(String) });
+      expect(time.sleep).not.toHaveBeenCalled();
+      expect(fetcher).toHaveBeenCalledTimes(1);
+    } finally { budget.dispose(); }
+  });
+
+  it('does not mistake a permission 403 with malformed retry guidance for a cooldown', async () => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(Response.json({ message: 'Resource not accessible by integration' }, {
+      status: 403, headers: { 'retry-after': '-1', 'x-ratelimit-remaining': '10' },
+    }));
+    await expect(new GitHubClient({ fetcher }).getRepository(input)).rejects.toMatchObject({ code: 'GITHUB_FORBIDDEN', status: 502 });
+    expect(fetcher).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not retry malformed successful responses', async () => {
+    const fetcher = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(new Response('{bad json'))
+      .mockResolvedValueOnce(Response.json(metadata));
+    await expect(new GitHubClient({ fetcher }).getRepository(input)).rejects.toMatchObject({ code: 'GITHUB_UPSTREAM_FAILURE' });
+    expect(fetcher).toHaveBeenCalledTimes(1);
   });
 
   it('recognizes secondary limits without forwarding upstream text', async () => {

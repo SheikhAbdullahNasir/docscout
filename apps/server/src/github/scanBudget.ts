@@ -43,6 +43,12 @@ export class ScanBudget {
     if (this.signal.aborted) throw this.signal.reason as ApplicationError;
   }
 
+  cancel(reason: ApplicationError) {
+    if (this.signal.aborted) return;
+    this.note(reason);
+    this.controller.abort(reason);
+  }
+
   consumeRequest() {
     this.checkDeadline();
     if (this.remainingRequests === 0) {

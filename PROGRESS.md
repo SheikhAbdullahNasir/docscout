@@ -368,3 +368,11 @@ git diff --check
 All commands passed on the final implementation. The initial restricted Windows Vitest run hit the known temporary-file `ENOENT`; the unchanged run outside that restriction worked. A later concurrent verification run hit the existing 2 MiB fixture's five-second test timeout; the unchanged focused command passed when rerun on its own, without changing the fixture or timeout.
 
 No required check remains blocked. The whole test suite, production smoke, E2E, full build, and independent review were intentionally deferred to the Phase 4 completion gate. No live GitHub test was used. Queueing/admission, retries, deduplication, caching/LRU/ETags, IP rate limits/proxy changes, CI, and AI remain unimplemented. Stop at this Phase 4A checkpoint; the next step is a separately scoped, approved Phase 4B task.
+
+## Phase 4B — serial GitHub requests, retries, and cooldowns (October 8, 2026)
+
+Added a process-wide FIFO queue for all GitHub request attempts. Queue waiting uses the existing per-scan deadline and request budget. Each request may retry once for selected transient transport failures, request timeouts, HTTP 500/502/503/504, or a validated rate-limit cooldown. Cooldown parsing accepts bounded `Retry-After` values and rate-limit reset timestamps, preserves `retryAt`, and keeps permission 403 responses distinct. Retries and cooldown waits stop when the scan deadline or request budget cannot accommodate another attempt.
+
+Focused offline verification passed **123 tests across 6 suites**, including queue ordering/cancellation, retry limits, cooldown parsing, and Phase 4A request/deadline regressions. `npm run typecheck`, `npm run lint`, and `git diff --check` passed. No live GitHub calls were used. Full suite, build, production smoke, E2E, and CI remain deferred to the Phase 4 completion gate.
+
+Stop at Phase 4B. Recommended next step: a separately scoped Phase 4C task.

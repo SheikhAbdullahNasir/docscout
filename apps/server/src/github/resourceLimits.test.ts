@@ -69,17 +69,17 @@ describe('shared scan request budget', () => {
     } finally { budget.dispose(); }
   });
 
-  it('counts failed and retry-like attempts without adding automatic retries', async () => {
+  it('counts a transient retry attempt against the shared request budget', async () => {
     const fetcher = vi.fn<typeof fetch>().mockResolvedValueOnce(new Response(null, { status: 500 }))
-      .mockResolvedValueOnce(Response.json(metadata));
+      .mockResolvedValueOnce(Response.json(metadata)).mockResolvedValueOnce(Response.json(metadata));
     const client = new GitHubClient({ fetcher });
     const budget = new ScanBudget();
     try {
-      await expect(client.getRepository(input, budget)).rejects.toMatchObject({ code: 'GITHUB_UPSTREAM_FAILURE' });
-      expect(budget.requestsUsed).toBe(1);
       await expect(client.getRepository(input, budget)).resolves.toMatchObject({ name: 'Repo' });
       expect(budget.requestsUsed).toBe(2);
-      expect(fetcher).toHaveBeenCalledTimes(2);
+      await expect(client.getRepository(input, budget)).resolves.toMatchObject({ name: 'Repo' });
+      expect(budget.requestsUsed).toBe(3);
+      expect(fetcher).toHaveBeenCalledTimes(3);
     } finally { budget.dispose(); }
   });
 
@@ -134,23 +134,26 @@ describe('request and scan deadlines', () => {
     await vi.advanceTimersByTimeAsync(9_999);
     expect(signals[0].aborted).toBe(false);
     await vi.advanceTimersByTimeAsync(1);
+    await vi.advanceTimersByTimeAsync(10_000);
     await assertion;
-    expect(signals[0].aborted).toBe(true);
+    expect(signals).toHaveLength(2);
+    expect(signals.every((signal) => signal.aborted)).toBe(true);
     expect(vi.getTimerCount()).toBe(0);
   });
 
   it('cancels stalled response-body reading within the same 10-second request timeout', async () => {
     vi.useFakeTimers();
-    let cancelled = false;
-    const stream = new ReadableStream<Uint8Array>({
+    let cancelled = 0;
+    const fetcher: typeof fetch = async () => new Response(new ReadableStream<Uint8Array>({
       start(controller) { controller.enqueue(new TextEncoder().encode('{"private":false')); },
-      cancel() { cancelled = true; },
-    });
-    const operation = new GitHubClient({ fetcher: async () => new Response(stream) }).getRepository(input);
+      cancel() { cancelled += 1; },
+    }));
+    const operation = new GitHubClient({ fetcher }).getRepository(input);
     const assertion = expect(operation).rejects.toMatchObject({ code: 'GITHUB_REQUEST_TIMEOUT' });
     await vi.advanceTimersByTimeAsync(10_000);
+    await vi.advanceTimersByTimeAsync(10_000);
     await assertion;
-    expect(cancelled).toBe(true);
+    expect(cancelled).toBe(2);
     expect(vi.getTimerCount()).toBe(0);
   });
 
@@ -191,13 +194,13 @@ describe('request and scan deadlines', () => {
     let signal: AbortSignal | undefined;
     const fetcher: typeof fetch = async (_url, options) => {
       signal = options?.signal as AbortSignal;
-      time = 10_000;
+      time += 10_000;
       return Response.json(metadata);
     };
     try {
       await expect(new GitHubClient({ fetcher }).getRepository(input, budget)).rejects.toMatchObject({ status: 504, code: 'GITHUB_REQUEST_TIMEOUT' });
       expect(signal?.aborted).toBe(true);
-      expect(budget.requestsUsed).toBe(1);
+      expect(budget.requestsUsed).toBe(2);
     } finally { budget.dispose(); }
   });
 
