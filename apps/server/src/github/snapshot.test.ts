@@ -63,7 +63,7 @@ describe('default-branch snapshot', () => {
         status: 'skipped', skipReason: 'readme-unavailable', supportedCommandsChecked: 0,
         commandsSkipped: 0, findingsProduced: 0, findingsOmitted: 0,
       }) }, labeledIssues: emptyLabeledIssues },
-    }, issues: emptyIssues });
+    }, issues: emptyIssues, scan: { status: 'complete', githubRequests: 4, warnings: [] } });
     expect(fetcher.mock.calls.map(([url]) => url)).toEqual([
       `https://api.github.com/repos/Canonical/Repo/commits/${encodeURIComponent(defaultBranch)}`,
       `https://api.github.com/repos/Canonical/Repo/git/trees/${treeSha}?recursive=1`,
@@ -99,6 +99,7 @@ describe('default-branch snapshot', () => {
         coverage: { documentationFindingsProduced: 0, documentationFindingsOmitted: 0, issueFindingsProduced: 0 },
         labeledIssues: emptyLabeledIssues,
       },
+      scan: { status: 'complete', githubRequests: 3, warnings: [] },
     });
     expect(fetcher).toHaveBeenCalledTimes(3);
   });
