@@ -1,6 +1,6 @@
 # DocScout progress
 
-Approved source: `PROJECT_SPEC.md` version 1.0. Updated October 5, 2026.
+Approved source: `PROJECT_SPEC.md` version 1.0. Updated October 8, 2026.
 
 ## Phase status
 
@@ -17,12 +17,12 @@ Approved source: `PROJECT_SPEC.md` version 1.0. Updated October 5, 2026.
   - [x] Phase 3B — beginner-readable coverage, partial, and empty-result presentation.
   - [x] Phase 3C — browser-only finding filters and per-finding Copy next steps.
   - [x] Phase 3D — responsive/accessibility cleanup and Phase 3 completion gate.
-- [ ] Phase 4 — reliable core, security limits, fixtures, and CI.
+- [x] Phase 4 — reliable core, security limits, fixtures, and CI; completion gate passed October 8, 2026.
   - [x] Phase 4A — scan/request resource budgets and deadlines.
   - [x] Phase 4B — serial GitHub requests, retries, and cooldowns.
   - [x] Phase 4C — in-flight deduplication and completed-result cache.
   - [x] Phase 4D — client-IP admission, pending-scan cap, Origin checks, and GitHub host hardening.
-  - [ ] Phase 4 completion gate and CI — not started.
+  - [x] Phase 4 completion gate and CI.
 - [ ] Phase 5 — optional AI; not requested, disabled.
 - [ ] Phase 6 — release readiness and real-repository validation.
 
@@ -399,4 +399,43 @@ Phase 4C was the checkpoint before Phase 4D; see the Phase 4D record below. Phas
 - Validated present Origin headers on POST/PUT/PATCH/DELETE API requests against the request origin, with only the two local Vite origins allowed during development. Missing Origin remains supported. No wildcard CORS was added.
 - Kept GitHub redirects disabled and retained strict HTTPS `api.github.com` pagination checks and the two-page issue cap. Added offline tests for redirect and pagination rejection, credentials, and request-budget accounting.
 
-Focused Phase 4D verification passed **80 tests across 4 suites**. The 4A–4C targeted regression run passed 334 tests across 16 suites; its existing 2 MiB document fixture timed out under 17-worker load, then the unchanged 12-test suite passed alone. `npm run typecheck`, `npm run lint`, and `git diff --check` passed. No live GitHub calls were used. CI and the final Phase 4 completion gate remain unstarted.
+Focused Phase 4D verification passed **80 tests across 4 suites**. The 4A–4C targeted regression run passed 334 tests across 16 suites; its existing 2 MiB document fixture timed out under 17-worker load, then the unchanged 12-test suite passed alone. `npm run typecheck`, `npm run lint`, and `git diff --check` passed. No live GitHub calls were used. At that checkpoint, CI and the final Phase 4 completion gate remained unstarted; both are completed below.
+
+## Phase 4 completion gate (October 8, 2026)
+
+Phase 4 is complete. The integrated reliability/security audit found one acceptance mismatch: Phase 4D rejected all GitHub redirects although `PROJECT_SPEC.md` permits a bounded validated same-host HTTPS repository redirect. A failing regression was added first, then the client was changed to follow at most one redirect within the existing serialized request slot and deadline, charge it to the 30-request scan budget, and use validated canonical repository metadata for subsequent requests. Only `/repos/{owner}/{repo}` paths with the same endpoint suffix and query are accepted; cross-host, non-HTTPS, credential-bearing, fragment-bearing, unsafe endpoint, and extra-hop redirects are rejected. No other product logic was rewritten.
+
+### Integrated Phase 4A–4D audit
+
+- **4A budgets/deadlines:** existing focused tests cover the 256 KiB selected-file and 2 MiB combined-text caps, 10 MiB tree and 2 MiB other-response streamed caps, 30-request scan budget, 10-second request timeout, 60-second scan deadline, 4 KiB request body, and 3 MiB browser response budget. Limit/deadline paths preserve completed evidence and report omissions, unchecked work, or partial coverage without claiming absence.
+- **4B queue/retries/cooldowns:** tests cover one process-wide FIFO outbound request at a time, slot release after success/error/cancellation, no dispatch for expired/cancelled queued work, at most one bounded transient retry, retries and redirects charged to request budget, permission errors distinct from rate limits, valid Retry-After/reset guidance, and cooldowns bounded by the scan deadline.
+- **4C cache/deduplication:** tests cover shared equivalent in-flight scans, no duplicate GitHub work for followers, 10-minute TTL, 50-entry/approximately 32 MiB limits, deterministic LRU behavior, no request budget on hits, original scan timestamps, immutable canonical cached results with per-caller copies and `cached` flags, failure cleanup, and caller disconnect behavior.
+- **4D admission/security:** tests cover five analysis requests per ten minutes per client IP, forwarded headers ignored without an explicit safe `TRUSTED_PROXY` configuration, no more than ten unique pending scans, no added slot for cache hits/followers, narrow mutation Origin validation, no wildcard production CORS, redirect restrictions, validated HTTPS `api.github.com` pagination, the two-page issue cap, and request-budget enforcement.
+
+### Hostile-content and secret review
+
+Deterministic offline tests cover unsafe/lookalike repository URLs, credentials and encoded path traversal, unsafe Markdown schemes including `javascript:` and `data:`, hostile Markdown/issue HTML and script text rendered inertly, fake LLM-like instructions treated only as repository text, no automatic remote image requests, cross-host/non-HTTPS GitHub redirect rejection, strict pagination hosts, oversized bodies, and incomplete-tree false-positive suppression. Source inspection found no repository-content-driven fetch or command-execution path. The browser fixture verifies the only request is the snapshot API request and observes no remote requests or injected elements/execution markers. No external-link checking was added.
+
+Secret/config inspection found `.env` absent and ignored; the tracked `.env.example` has blank credential/provider-key placeholders; server credentials are referenced only by server configuration/client code; there are no `VITE_` secret variables or configured browser-side secrets. The built browser bundle contains no server key values or key-like credential strings. API error tests assert no token, Authorization header, upstream response body, or stack trace is returned. Logs contain only startup information. No actual credentials were present in tracked files.
+
+### Offline CI and runtime independence
+
+Added `.github/workflows/ci.yml` for pushes and pull requests with read-only repository permission, Node.js 22, `npm ci`, lint, typecheck, the offline test suite, and build. It has no deployment step, token requirement, or paid service. Browser tests remain an explicit local gate; README documents installing Chromium with Playwright, and the 26 fixture-based browser tests passed locally. No live GitHub, LLM, or remote resource request was made during Phase 4 verification. `AI_PROVIDER=none` remains the default; startup, build, and tests need no LLM key, and no Phase 5 behavior was introduced.
+
+| Required command/check | Actual result |
+|---|---|
+| `npm run lint` | Passed |
+| `npm run typecheck` | Passed across all three workspaces |
+| `npm test` | Passed: 386 tests across 19 files |
+| `npm run build` | Passed: Vite frontend and TypeScript server builds |
+| `npm run test:production` | Passed: health, frontend HTML/assets, and API 404 smoke checks |
+| `npm run test:e2e` | Passed: all 26 Chromium tests using local fixtures |
+| `git diff --check` | Passed |
+| Hostile/security fixtures and secret/config review | Passed; details above |
+| Independent read-only review of `e43d382..0fa9ef7` | No Critical or Important findings; reviewer independently ran `git diff --check` on that range |
+
+The reviewer noted a non-blocking coverage improvement: add isolated negative redirect tests for same-origin credentials, changed query/fragment, invalid repository segments, and changed endpoint suffix. The current validator rejects these by inspection. The reviewer did not independently rerun the full verification suite or secret inspection, and remote Actions execution was not available. The workflow received manual structural review because no local actionlint/YAML parser is installed; it has not yet run remotely.
+
+Known limitations: queues, request/deadline budgets, cache, deduplication, pending-scan admission, and IP rate limiting are per process instance and are not distributed across replicas. Redirect handling is bounded to the validated `/repos/{owner}/{repo}` endpoint form; ID-form redirect compatibility and live GitHub rename behavior were not verified. Automated browser checks use Chromium only. No live-repository smoke or external network checking was performed; remote Actions results remain unverified. Windows sandboxed localhost/temp-file restrictions required permitted verification reruns, which passed unchanged; Playwright also printed harmless color-environment warnings.
+
+The next recommended roadmap step is **Phase 6 — release readiness and real-repository validation**, as a separately scoped task. Phase 5 remains optional and was not started. Stop at the Phase 4 gate.
