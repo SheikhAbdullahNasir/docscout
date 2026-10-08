@@ -16,13 +16,73 @@ const emptyIssueCoverage = { complete: true, sampled: false, queries: [
 ] };
 
 describe('snapshot endpoint', () => {
+  it('reuses a completed scan for normalized repository URLs', async () => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValueOnce(Response.json(metadata))
+      .mockResolvedValueOnce(Response.json(commit)).mockResolvedValueOnce(Response.json({ sha: treeSha, truncated: false, tree: [] }))
+      .mockResolvedValueOnce(Response.json([])).mockResolvedValueOnce(Response.json([]));
+    const app = createApp({ github: new GitHubClient({ fetcher }) });
+
+    const fresh = await request(app).post('/api/repository/snapshot').send(input);
+    const cached = await request(app).post('/api/repository/snapshot')
+      .send({ repositoryUrl: 'https://github.com/input/repo.git/' });
+
+    expect(fresh.status).toBe(200);
+    expect(cached.status).toBe(200);
+    expect(fresh.body.cached).toBe(false);
+    expect(cached.body.cached).toBe(true);
+    expect(cached.body.scannedAt).toBe(fresh.body.scannedAt);
+    expect(cached.body.issues.fetchedAt).toBe(fresh.body.issues.fetchedAt);
+    expect(fetcher).toHaveBeenCalledTimes(5);
+  });
+
+  it('expires a completed scan at ten minutes and starts a fresh scan', async () => {
+    let now = Date.parse('2026-01-01T00:00:00.000Z');
+    const fetcher = vi.fn<typeof fetch>();
+    for (let scan = 0; scan < 2; scan += 1) {
+      fetcher.mockResolvedValueOnce(Response.json(metadata))
+        .mockResolvedValueOnce(Response.json(commit)).mockResolvedValueOnce(Response.json({ sha: treeSha, truncated: false, tree: [] }))
+        .mockResolvedValueOnce(Response.json([])).mockResolvedValueOnce(Response.json([]));
+    }
+    const app = createApp({ github: new GitHubClient({ fetcher }), repositoryRouteOptions: { now: () => now } });
+
+    const fresh = await request(app).post('/api/repository/snapshot').send(input);
+    expect(fresh.body.scannedAt).toBe(new Date(now).toISOString());
+    now += 10 * 60 * 1000 - 1;
+    const cached = await request(app).post('/api/repository/snapshot').send(input);
+    now += 1;
+    const expired = await request(app).post('/api/repository/snapshot').send(input);
+
+    expect(fresh.body.cached).toBe(false);
+    expect(cached.body.cached).toBe(true);
+    expect(expired.body.cached).toBe(false);
+    expect(expired.body.scannedAt).not.toBe(fresh.body.scannedAt);
+    expect(fetcher).toHaveBeenCalledTimes(10);
+  });
+
+  it('does not cache an authentication failure', async () => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValueOnce(Response.json({ message: 'secret' }, { status: 401 }))
+      .mockResolvedValueOnce(Response.json(metadata)).mockResolvedValueOnce(Response.json(commit))
+      .mockResolvedValueOnce(Response.json({ sha: treeSha, truncated: false, tree: [] }))
+      .mockResolvedValueOnce(Response.json([])).mockResolvedValueOnce(Response.json([]));
+    const app = createApp({ github: new GitHubClient({ fetcher }) });
+
+    const failed = await request(app).post('/api/repository/snapshot').send(input);
+    const retried = await request(app).post('/api/repository/snapshot').send(input);
+
+    expect(failed.status).toBe(502);
+    expect(failed.body.error.code).toBe('GITHUB_AUTH_ERROR');
+    expect(retried.status).toBe(200);
+    expect(retried.body.cached).toBe(false);
+    expect(fetcher).toHaveBeenCalledTimes(6);
+  });
+
   it.each([false, true])('returns pinned data and explicit coverage; truncated=%s', async (truncated) => {
     const fetcher = vi.fn<typeof fetch>().mockResolvedValueOnce(Response.json(metadata))
       .mockResolvedValueOnce(Response.json(commit)).mockResolvedValueOnce(Response.json({ sha: treeSha, truncated, tree: [] }))
       .mockResolvedValueOnce(Response.json([])).mockResolvedValueOnce(Response.json([]));
     const response = await request(createApp({ github: new GitHubClient({ fetcher }) })).post('/api/repository/snapshot').send(input);
     expect(response.status).toBe(200);
-    expect(response.body).toEqual({ schemaVersion: 1, repository: { owner: 'Canonical', name: 'Repo', url: metadata.html_url, private: false, archived: false, defaultBranch: 'release/docs' }, status: 'ready', snapshot: {
+    expect(response.body).toEqual({ schemaVersion: 1, repository: { owner: 'Canonical', name: 'Repo', url: metadata.html_url, private: false, archived: false, defaultBranch: 'release/docs' }, status: 'ready', scannedAt: expect.any(String), cached: false, snapshot: {
       defaultBranch: 'release/docs', commitSha, treeSha, tree: { entries: [], truncated, complete: !truncated },
       documents: {
         selectionComplete: !truncated,

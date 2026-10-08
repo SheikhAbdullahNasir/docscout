@@ -272,10 +272,13 @@ export type RepositorySnapshotResult = (
 export type RepositorySnapshotResponse = RepositorySnapshotResult & {
   schemaVersion: 1;
   repository: PublicRepositoryMetadata;
+  scannedAt: string;
+  cached: boolean;
 };
 
 export type RepositoryErrorCode =
   | 'INVALID_REPOSITORY_URL' | 'INVALID_REQUEST_BODY' | 'REQUEST_TOO_LARGE'
+  | 'SCAN_CANCELLED'
   | 'REPOSITORY_UNAVAILABLE' | 'PRIVATE_REPOSITORY' | 'GITHUB_AUTH_ERROR'
   | 'GITHUB_FORBIDDEN' | 'GITHUB_COOLDOWN' | 'GITHUB_UPSTREAM_FAILURE'
   | 'COMMIT_LOOKUP_FAILED' | 'TREE_LOOKUP_FAILED' | ScanResourceWarningCode;

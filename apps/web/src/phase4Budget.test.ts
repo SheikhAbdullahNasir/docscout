@@ -14,13 +14,15 @@ async function fixture(): Promise<RepositorySnapshotResponse> {
   const fetcher = vi.fn<typeof fetch>().mockResolvedValueOnce(Response.json({ sha: commitSha, commit: { tree: { sha: treeSha } } }))
     .mockResolvedValueOnce(Response.json({ sha: treeSha, tree: [], truncated: false }))
     .mockResolvedValueOnce(Response.json([])).mockResolvedValueOnce(Response.json([]));
-  return { schemaVersion: 1, repository, ...await new GitHubClient({ fetcher }).getSnapshot(repository) };
+  return { schemaVersion: 1, repository, ...await new GitHubClient({ fetcher }).getSnapshot(repository),
+    scannedAt: new Date(0).toISOString(), cached: false };
 }
 
 describe('Phase 4A browser contract and partial coverage', () => {
   it('continues accepting normal Phase 1–3 results', async () => {
     const result = await fixture();
     expect(isSnapshotResponse(result)).toBe(true);
+    expect(isSnapshotResponse({ ...result, cached: true })).toBe(true);
     expect(renderToStaticMarkup(createElement(Results, { result }))).toContain('No suggestions found in the checked scope.');
   });
 

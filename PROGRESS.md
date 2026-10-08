@@ -376,3 +376,13 @@ Added a process-wide FIFO queue for all GitHub request attempts. Queue waiting u
 Focused offline verification passed **123 tests across 6 suites**, including queue ordering/cancellation, retry limits, cooldown parsing, and Phase 4A request/deadline regressions. `npm run typecheck`, `npm run lint`, and `git diff --check` passed. No live GitHub calls were used. Full suite, build, production smoke, E2E, and CI remain deferred to the Phase 4 completion gate.
 
 Stop at Phase 4B. Recommended next step: a separately scoped Phase 4C task.
+
+## Phase 4C — in-flight deduplication and completed-result cache (October 8, 2026)
+
+- Snapshot requests now share one in-flight scan by the validated owner/repository input. Each connected caller owns a waiter; disconnecting one does not cancel work needed by others, and the final disconnect cancels the shared `ScanBudget`. Failed and cancelled entries are removed so a later request can retry.
+- Added an in-memory completed-result cache with a 10-minute insertion TTL, 50-entry LRU cap, and 32 MiB approximate UTF-8 JSON cap. Validated URL variants share a key. Successful ready/empty responses, including useful partial results, are eligible; failures are not. Oversized individual results are returned but skipped by the cache.
+- Added typed `scannedAt` and `cached` response fields. Cache hits preserve scan/issue timestamps, findings, request counts, and coverage while returning `cached: true`. Cache storage and every caller response use independent JSON copies. Cache hits and in-flight followers create no extra scan budget or GitHub request sequence.
+
+Focused offline verification passed **25 cache/snapshot tests** and **114 tests across 9 suites** for cache/deduplication plus affected Phase 4A/4B budget, queue/retry, snapshot, and browser-contract regressions. `npm run typecheck`, `npm run lint`, and `git diff --check` passed. No live GitHub calls were used. An initial restricted Supertest run hit localhost `EACCES`; the unchanged focused suites passed with permitted loopback access.
+
+Stop at Phase 4C. The remaining Phase 4 work is not started; take it as a separately scoped phase.
