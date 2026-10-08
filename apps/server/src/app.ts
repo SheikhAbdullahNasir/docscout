@@ -3,10 +3,16 @@ import { fileURLToPath } from 'node:url';
 import type { HealthResponse } from '@docscout/shared';
 import { GitHubClient } from './github/client.js';
 import { repositoryRoute, type RepositoryRouteOptions } from './routes/repository.js';
+import { parseTrustedProxySetting } from './security/trustedProxy.js';
 
-export function createApp(options: { github?: GitHubClient; repositoryRouteOptions?: RepositoryRouteOptions } = {}) {
+export function createApp(options: {
+  github?: GitHubClient;
+  repositoryRouteOptions?: RepositoryRouteOptions;
+  trustedProxy?: string;
+} = {}) {
   const app = express();
   app.disable('x-powered-by');
+  app.set('trust proxy', parseTrustedProxySetting(options.trustedProxy ?? process.env.TRUSTED_PROXY));
   app.get('/api/health', (_req, res) => {
     const health: HealthResponse = { status: 'ok' };
     res.json(health);

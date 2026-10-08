@@ -25,11 +25,11 @@ function issue(number: number, extra: Record<string, unknown> = {}) {
   };
 }
 
-function pageLink(page: number, label: string, host = 'api.github.com') {
+function pageLink(page: number, label: string, host = 'api.github.com', protocol = 'https') {
   const params = new URLSearchParams({
     state: 'open', labels: label, sort: 'updated', direction: 'desc', per_page: '100', page: String(page),
   });
-  return `<https://${host}/repos/Canonical/Repo/issues?${params.toString()}>; rel="next"`;
+  return `<${protocol}://${host}/repos/Canonical/Repo/issues?${params.toString()}>; rel="next"`;
 }
 
 function fetchForIssues(...responses: Array<Response | Error>) {
@@ -178,7 +178,9 @@ describe('bounded labeled issue retrieval', () => {
       Response.json([]),
     );
 
-    const result = await new GitHubClient({ fetcher }).getSnapshot(repository);
+    const client = new GitHubClient({ fetcher });
+    const budget = client.createScanBudget();
+    const result = await client.getSnapshot(repository, budget);
 
     expect(result).toMatchObject({ issues: {
       items: [{ number: 1 }, { number: 2 }],
@@ -190,6 +192,8 @@ describe('bounded labeled issue retrieval', () => {
     } });
     expect(fetcher).toHaveBeenCalledTimes(5);
     expect(fetcher.mock.calls.map(([url]) => String(url))).not.toContain(expect.stringContaining('page=3'));
+    expect(budget.requestsUsed).toBe(5);
+    budget.dispose();
   });
 
   it('rejects an untrusted pagination host and retains explicit partial coverage', async () => {
@@ -209,6 +213,26 @@ describe('bounded labeled issue retrieval', () => {
       ] },
     } });
     expect(fetcher).toHaveBeenCalledTimes(4);
+  });
+
+  it('rejects non-HTTPS pagination without spending another request', async () => {
+    const fetcher = fetchForIssues(
+      Response.json([issue(22)], { headers: { Link: pageLink(2, 'good first issue', 'api.github.com', 'http') } }),
+      Response.json([]),
+    );
+
+    const result = await new GitHubClient({ fetcher }).getSnapshot(repository);
+
+    expect(result.issues).toMatchObject({
+      items: [{ number: 22 }],
+      coverage: { complete: false, queries: [
+        { label: 'good first issue', status: 'partial', pagesFetched: 1,
+          message: 'Issue coverage for this label is incomplete because GitHub pagination was invalid.' },
+        { label: 'help wanted', status: 'complete', pagesFetched: 1 },
+      ] },
+    });
+    expect(fetcher).toHaveBeenCalledTimes(4);
+    expect(fetcher.mock.calls.map(([url]) => String(url)).some((url) => url.includes('page=2'))).toBe(false);
   });
 
   it('marks malformed issue data as a failed label query while retaining the completed label query', async () => {

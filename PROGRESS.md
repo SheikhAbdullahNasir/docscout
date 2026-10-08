@@ -18,6 +18,11 @@ Approved source: `PROJECT_SPEC.md` version 1.0. Updated October 5, 2026.
   - [x] Phase 3C — browser-only finding filters and per-finding Copy next steps.
   - [x] Phase 3D — responsive/accessibility cleanup and Phase 3 completion gate.
 - [ ] Phase 4 — reliable core, security limits, fixtures, and CI.
+  - [x] Phase 4A — scan/request resource budgets and deadlines.
+  - [x] Phase 4B — serial GitHub requests, retries, and cooldowns.
+  - [x] Phase 4C — in-flight deduplication and completed-result cache.
+  - [x] Phase 4D — client-IP admission, pending-scan cap, Origin checks, and GitHub host hardening.
+  - [ ] Phase 4 completion gate and CI — not started.
 - [ ] Phase 5 — optional AI; not requested, disabled.
 - [ ] Phase 6 — release readiness and real-repository validation.
 
@@ -385,4 +390,13 @@ Stop at Phase 4B. Recommended next step: a separately scoped Phase 4C task.
 
 Focused offline verification passed **25 cache/snapshot tests** and **114 tests across 9 suites** for cache/deduplication plus affected Phase 4A/4B budget, queue/retry, snapshot, and browser-contract regressions. `npm run typecheck`, `npm run lint`, and `git diff --check` passed. No live GitHub calls were used. An initial restricted Supertest run hit localhost `EACCES`; the unchanged focused suites passed with permitted loopback access.
 
-Stop at Phase 4C. The remaining Phase 4 work is not started; take it as a separately scoped phase.
+Phase 4C was the checkpoint before Phase 4D; see the Phase 4D record below. Phase 4 remains open for its separately scoped completion gate and CI.
+
+## Phase 4D — request admission and host hardening (October 8, 2026)
+
+- Added a per-process limit of five analysis requests per ten minutes per client IP. Express ignores forwarded IP headers unless server-only `TRUSTED_PROXY` explicitly lists valid proxy IPs/CIDRs; wildcard and all-address CIDRs are rejected. Limiter and cache state clear on restart.
+- Limited the coordinator to ten unique queued/in-flight scans. Cache hits and identical in-flight followers do not consume another slot; success, failure, and final-caller cancellation release slots.
+- Validated present Origin headers on POST/PUT/PATCH/DELETE API requests against the request origin, with only the two local Vite origins allowed during development. Missing Origin remains supported. No wildcard CORS was added.
+- Kept GitHub redirects disabled and retained strict HTTPS `api.github.com` pagination checks and the two-page issue cap. Added offline tests for redirect and pagination rejection, credentials, and request-budget accounting.
+
+Focused Phase 4D verification passed **80 tests across 4 suites**. The 4A–4C targeted regression run passed 334 tests across 16 suites; its existing 2 MiB document fixture timed out under 17-worker load, then the unchanged 12-test suite passed alone. `npm run typecheck`, `npm run lint`, and `git diff --check` passed. No live GitHub calls were used. CI and the final Phase 4 completion gate remain unstarted.

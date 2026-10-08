@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { ApplicationError } from '../errors.js';
 import {
   CompletedScanCache,
   DEFAULT_SCAN_CACHE_MAX_BYTES,
@@ -215,5 +216,99 @@ describe('in-flight scan coordinator', () => {
     expect(second.cached).toBe(false);
     expect(firstStart).toHaveBeenCalledTimes(1);
     expect(secondStart).toHaveBeenCalledTimes(1);
+  });
+
+  it('admits ten unique pending scans and rejects the eleventh without starting it', async () => {
+    const coordinator = new ScanCoordinator(new CompletedScanCache<Result>(),
+      (result) => result.status === 'ready' || result.status === 'empty');
+    const tasks = Array.from({ length: 10 }, () => deferred<Result>());
+    const starts = tasks.map((task) => vi.fn(() => ({ promise: task.promise, cancel: vi.fn() })));
+    const pending = tasks.map((_, index) => coordinator.run(`owner/repo-${index}`, new AbortController().signal, starts[index]));
+    const rejectedStart = vi.fn(() => ({ promise: Promise.resolve({ status: 'ready' as const, cached: false }), cancel: vi.fn() }));
+
+    await expect(coordinator.run('owner/repo-10', new AbortController().signal, rejectedStart))
+      .rejects.toMatchObject({ status: 429, code: 'SCAN_CAPACITY_EXCEEDED', retryAt: expect.any(String) });
+    expect(starts.every((start) => start.mock.calls.length === 1)).toBe(true);
+    expect(rejectedStart).not.toHaveBeenCalled();
+    expect(coordinator.inFlightCount).toBe(10);
+
+    tasks.forEach((task) => task.resolve({ status: 'ready', cached: false }));
+    await Promise.all(pending);
+  });
+
+  it('lets followers join an existing scan without consuming a unique pending slot', async () => {
+    const coordinator = new ScanCoordinator(new CompletedScanCache<Result>(),
+      (result) => result.status === 'ready' || result.status === 'empty');
+    const tasks = Array.from({ length: 10 }, () => deferred<Result>());
+    const starts = tasks.map((task) => vi.fn(() => ({ promise: task.promise, cancel: vi.fn() })));
+    const pending = tasks.map((_, index) => coordinator.run(`owner/repo-${index}`, new AbortController().signal, starts[index]));
+    const followerStart = vi.fn(() => ({ promise: Promise.resolve({ status: 'ready' as const, cached: false }), cancel: vi.fn() }));
+    const follower = coordinator.run('owner/repo-0', new AbortController().signal, followerStart);
+    const rejectedStart = vi.fn(() => ({ promise: Promise.resolve({ status: 'ready' as const, cached: false }), cancel: vi.fn() }));
+
+    await expect(coordinator.run('owner/new-repo', new AbortController().signal, rejectedStart))
+      .rejects.toMatchObject({ code: 'SCAN_CAPACITY_EXCEEDED' });
+    expect(followerStart).not.toHaveBeenCalled();
+    expect(coordinator.inFlightCount).toBe(10);
+
+    tasks.forEach((task) => task.resolve({ status: 'ready', cached: false }));
+    await Promise.all([...pending, follower]);
+  });
+
+  it('serves cache hits without consuming a pending unique slot', async () => {
+    const coordinator = new ScanCoordinator(new CompletedScanCache<Result>(),
+      (result) => result.status === 'ready' || result.status === 'empty');
+    const cachedStart = vi.fn(() => ({ promise: Promise.resolve({ status: 'ready' as const, cached: false }), cancel: vi.fn() }));
+    await coordinator.run('owner/cached', new AbortController().signal, cachedStart);
+    const tasks = Array.from({ length: 9 }, () => deferred<Result>());
+    const pending = tasks.map((task, index) => coordinator.run(`owner/pending-${index}`, new AbortController().signal,
+      () => ({ promise: task.promise, cancel: vi.fn() })));
+    const shouldNotStart = vi.fn(() => ({ promise: Promise.resolve({ status: 'ready' as const, cached: false }), cancel: vi.fn() }));
+    const hit = await coordinator.run('owner/cached', new AbortController().signal, shouldNotStart);
+    const tenth = deferred<Result>();
+    const tenthScan = coordinator.run('owner/tenth', new AbortController().signal, () => ({ promise: tenth.promise, cancel: vi.fn() }));
+    const rejectedStart = vi.fn(() => ({ promise: Promise.resolve({ status: 'ready' as const, cached: false }), cancel: vi.fn() }));
+
+    expect(hit.cached).toBe(true);
+    expect(shouldNotStart).not.toHaveBeenCalled();
+    expect(coordinator.inFlightCount).toBe(10);
+    await expect(coordinator.run('owner/eleventh', new AbortController().signal, rejectedStart))
+      .rejects.toMatchObject({ code: 'SCAN_CAPACITY_EXCEEDED' });
+    expect(rejectedStart).not.toHaveBeenCalled();
+
+    tasks.forEach((task) => task.resolve({ status: 'ready', cached: false }));
+    tenth.resolve({ status: 'ready', cached: false });
+    await Promise.all([...pending, tenthScan]);
+  });
+
+  it.each(['success', 'failure', 'cancellation'] as const)('releases pending capacity after %s', async (outcome) => {
+    const coordinator = new ScanCoordinator(new CompletedScanCache<Result>(),
+      (result) => result.status === 'ready' || result.status === 'empty', { maxPending: 1 });
+    const task = deferred<Result>();
+    const cancel = vi.fn((reason: unknown) => task.reject(reason));
+    const caller = new AbortController();
+    const first = coordinator.run('owner/first', caller.signal, () => ({ promise: task.promise, cancel }));
+    const whilePending = vi.fn(() => ({ promise: Promise.resolve({ status: 'ready' as const, cached: false }), cancel: vi.fn() }));
+    await expect(coordinator.run('owner/blocked', new AbortController().signal, whilePending))
+      .rejects.toMatchObject({ code: 'SCAN_CAPACITY_EXCEEDED' });
+
+    if (outcome === 'success') {
+      task.resolve({ status: 'ready', cached: false });
+      await first;
+    } else if (outcome === 'failure') {
+      task.reject(new Error('scan failed'));
+      await expect(first).rejects.toThrow('scan failed');
+    } else {
+      const reason = new ApplicationError(499, 'SCAN_CANCELLED', 'cancelled');
+      caller.abort(reason);
+      await expect(first).rejects.toBe(reason);
+      expect(cancel).toHaveBeenCalledWith(reason);
+    }
+
+    const after = deferred<Result>();
+    const next = coordinator.run('owner/after', new AbortController().signal, () => ({ promise: after.promise, cancel: vi.fn() }));
+    expect(coordinator.inFlightCount).toBe(1);
+    after.resolve({ status: 'ready', cached: false });
+    await next;
   });
 });

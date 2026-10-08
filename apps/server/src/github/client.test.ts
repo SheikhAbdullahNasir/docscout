@@ -227,12 +227,27 @@ describe('GitHub metadata client', () => {
     await expect(new GitHubClient({ fetcher }).getRepository(input)).rejects.toMatchObject({ code: 'GITHUB_REQUEST_TIMEOUT', status: 504 });
   });
 
-  it('does not follow even a same-host redirect or forward authorization', async () => {
+  it.each([
+    ['same-host HTTPS', 'https://api.github.com/repos/new-owner/repo'],
+    ['cross-host HTTPS', 'https://evil.test/repos/owner/repo'],
+    ['non-HTTPS', 'http://api.github.com/repos/owner/repo'],
+    ['credential-bearing cross-host', 'https://api.github.com@evil.test/repos/owner/repo'],
+  ])('does not follow a %s GitHub redirect', async (_kind, location) => {
     const fetcher = vi.fn<typeof fetch>().mockResolvedValue(new Response(null, {
-      status: 301, headers: { Location: 'https://api.github.com/repos/new-owner/repo' },
+      status: 301, headers: { Location: location },
     }));
-    await expect(new GitHubClient({ fetcher, token: 'sentinel' }).getRepository(input)).rejects.toMatchObject({ code: 'GITHUB_UPSTREAM_FAILURE' });
-    expect(fetcher).toHaveBeenCalledTimes(1);
-    expect(fetcher.mock.calls[0][1]?.redirect).toBe('manual');
+    const client = new GitHubClient({ fetcher, token: 'sentinel' });
+    const budget = client.createScanBudget();
+    try {
+      await expect(client.getRepository(input, budget)).rejects.toMatchObject({ code: 'GITHUB_UPSTREAM_FAILURE' });
+      expect(budget.requestsUsed).toBe(1);
+      expect(fetcher).toHaveBeenCalledTimes(1);
+      expect(fetcher.mock.calls[0][0]).toBe('https://api.github.com/repos/owner/repo');
+      expect(new Headers(fetcher.mock.calls[0][1]?.headers).get('Authorization')).toBe('Bearer sentinel');
+      expect(fetcher.mock.calls[0][1]?.redirect).toBe('manual');
+      expect(fetcher.mock.calls.slice(1).some(([url]) => new URL(String(url)).host !== 'api.github.com')).toBe(false);
+    } finally {
+      budget.dispose();
+    }
   });
 });

@@ -18,7 +18,9 @@ npm run dev
 
 Open http://127.0.0.1:5173. The server runs at http://127.0.0.1:3001; Vite proxies `/api` to it. `GET /api/health` returns only `{"status":"ok"}`. Both processes bind to loopback. Stop with Ctrl+C.
 
-No credentials or `.env` file are needed. Optional later server settings are documented in `.env.example`; credentials are blank. If you copy it to root `.env`, keep that file private. Do not put secrets in `VITE_` variables or paste credentials into chat. Development expects server port 3001 because the Vite proxy uses it.
+No credentials or `.env` file are needed. Optional server settings are documented in `.env.example`; credentials are blank. If you copy it to root `.env`, keep that file private. Do not put secrets in `VITE_` variables or paste credentials into chat. Development expects server port 3001 because the Vite proxy uses it.
+
+Express does not trust forwarded client IP headers by default. If deployment puts the server behind a reverse proxy, set server-only `TRUSTED_PROXY` to a comma-separated list of that proxy's explicit IP addresses or CIDRs. Leave it blank for direct/local access. Wildcards, `true`, and all-address CIDRs are rejected. The proxy must preserve the public `Host` and set forwarded protocol headers when terminating HTTPS.
 
 The form accepts a basic GitHub repository URL shape, supports Enter submission, shows inline errors, and sends valid input to the existing snapshot endpoint. The browser displays canonical repository and pinned-snapshot metadata, selected README and CONTRIBUTING content, supported labeled issues, and narrow empty/partial/error states. Repository content is rendered as plain text; only server-validated repository, source, and issue URLs become links. Phase 2 analyzers and Phase 3 result cards are not implemented. AI has no implementation or runtime SDK and remains disabled regardless of environment keys. There is no public deployment.
 
@@ -56,7 +58,7 @@ Analyzers, browser result integration, and repository-content execution are not 
 
 ## Phase 1D labeled issues
 
-The snapshot response now includes `issues: { fetchedAt, items, coverage }`. The server requests open `good first issue` and `help wanted` streams separately, sorted by most recently updated with 100 items per page. It follows only validated `https://api.github.com` pagination for the same repository/query and fetches at most two pages per label. If another page remains, coverage reports that issue results were sampled.
+The snapshot response now includes `issues: { fetchedAt, items, coverage }`. The server requests open `good first issue` and `help wanted` streams separately, sorted by most recently updated with 100 items per page. It follows only validated HTTPS `api.github.com` pagination for the same repository/query and fetches at most two pages per label. If another page remains, coverage reports that issue results were sampled. GitHub redirects are not followed; each request stays on the fixed API host.
 
 Pull requests returned by GitHub's Issues endpoint are discarded. Issues appearing in both streams are deduplicated by number while preserving their exact label names, title, validated GitHub issue URL, update time, assignee logins, assignment state, and a plain-text body excerpt capped at 500 Unicode characters. The retrieval layer does not rank issues, estimate difficulty, or treat `help wanted` as proof that an issue is beginner-easy.
 
@@ -83,6 +85,8 @@ npm run test:production
 ```
 
 Playwright needs a one-time Chromium download. API and browser tests use local data and require no GitHub token or AI key. Keep ports 3001, 5173, and 3101 free for checks. The production smoke test uses 3101 and stops its child server afterward.
+
+The analysis endpoint accepts five requests per ten minutes per client IP and at most ten unique scans in its in-memory queue. Cache hits and identical in-flight followers do not consume extra pending-scan slots. Analysis limits, pending scans, and cached results are per server process and clear on restart; multiple instances will need shared limits before scaling. Present `Origin` headers on POST/PUT/PATCH/DELETE API requests must match the request origin. Development additionally allows only the local Vite origins on port 5173; clients that omit `Origin` remain supported. The server does not enable wildcard CORS.
 
 ## Run the production build locally
 

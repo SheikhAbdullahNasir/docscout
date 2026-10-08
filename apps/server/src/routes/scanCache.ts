@@ -1,6 +1,10 @@
+import { ApplicationError } from '../errors.js';
+
 export const DEFAULT_SCAN_CACHE_TTL_MS = 10 * 60 * 1000;
 export const DEFAULT_SCAN_CACHE_MAX_ENTRIES = 50;
 export const DEFAULT_SCAN_CACHE_MAX_BYTES = 32 * 1024 * 1024;
+export const DEFAULT_MAX_PENDING_UNIQUE_SCANS = 10;
+const PENDING_SCAN_RETRY_GUIDANCE_MS = 5_000;
 
 type CacheEntry = { serialized: string; insertedAt: number; bytes: number };
 
@@ -97,11 +101,17 @@ function copyJson<T>(value: T): T {
 /** Shares one scan among current callers and caches only successful useful results. */
 export class ScanCoordinator<T> {
   private readonly inFlight = new Map<string, InFlightEntry<T>>();
+  private readonly now: () => number;
+  private readonly maxPending: number;
 
   constructor(
     private readonly cache: CompletedScanCache<T>,
     private readonly isCacheable: (result: T) => boolean,
-  ) {}
+    options: { now?: () => number; maxPending?: number } = {},
+  ) {
+    this.now = options.now ?? Date.now;
+    this.maxPending = options.maxPending ?? DEFAULT_MAX_PENDING_UNIQUE_SCANS;
+  }
 
   get inFlightCount() { return this.inFlight.size; }
 
@@ -113,6 +123,12 @@ export class ScanCoordinator<T> {
 
     let entry = this.inFlight.get(key);
     if (!entry) {
+      if (this.inFlight.size >= this.maxPending) {
+        const retryAt = new Date(this.now() + PENDING_SCAN_RETRY_GUIDANCE_MS).toISOString();
+        return Promise.reject(new ApplicationError(429, 'SCAN_CAPACITY_EXCEEDED',
+          'DocScout is busy with other scans. Please retry shortly.', retryAt));
+      }
+
       let task: ScanTask<T>;
       try { task = start(); }
       catch (error) { return Promise.reject(error); }

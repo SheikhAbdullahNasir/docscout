@@ -4,7 +4,9 @@ import type { RepositoryErrorResponse, RepositoryMetadataResponse, RepositorySna
 import { ApplicationError } from '../errors.js';
 import { GitHubClient } from '../github/client.js';
 import { parseRepositoryUrl } from '../security/repositoryUrl.js';
+import { isAllowedMutationOrigin } from '../security/mutationOrigin.js';
 import { boundBrowserResponse } from './browserBudget.js';
+import { AnalyzeRateLimiter } from './analyzeRateLimiter.js';
 import { CompletedScanCache, ScanCoordinator } from './scanCache.js';
 
 export type RepositoryRouteOptions = { now?: () => number };
@@ -37,8 +39,15 @@ function repositoryScanKey(input: { owner: string; repo: string }) {
 export function repositoryRoute(github: GitHubClient, options: RepositoryRouteOptions = {}) {
   const router = express.Router();
   const now = options.now ?? Date.now;
+  const analyzeRateLimiter = new AnalyzeRateLimiter(now);
   const cache = new CompletedScanCache<RepositorySnapshotResponse>({ now });
-  const scans = new ScanCoordinator(cache, (result) => result.status === 'ready' || result.status === 'empty');
+  const scans = new ScanCoordinator(cache, (result) => result.status === 'ready' || result.status === 'empty', { now });
+  router.use((req, _res, next) => {
+    if (!['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method)) return next();
+    const origin = req.get('origin');
+    if (origin === undefined || isAllowedMutationOrigin(req, origin)) return next();
+    return next(new ApplicationError(403, 'ORIGIN_NOT_ALLOWED', 'This request origin is not allowed.'));
+  });
   const readRepositoryUrl = (body: unknown) => body !== null && typeof body === 'object' && !Array.isArray(body)
     ? (body as Record<string, unknown>).repositoryUrl : undefined;
   router.post('/', express.json({ limit: '4kb', strict: false }), async (req, res) => {
@@ -47,7 +56,13 @@ export function repositoryRoute(github: GitHubClient, options: RepositoryRouteOp
     const result: RepositoryMetadataResponse = { schemaVersion: 1, repository };
     res.json(result);
   });
-  router.post('/snapshot', express.json({ limit: '4kb', strict: false }), async (req, res) => {
+  router.post('/snapshot', (req, _res, next) => {
+    const clientIp = req.ip || req.socket.remoteAddress || 'unknown';
+    const admission = analyzeRateLimiter.admit(clientIp);
+    if (admission.allowed) return next();
+    return next(new ApplicationError(429, 'ANALYZE_RATE_LIMITED',
+      'Too many analysis requests. Please retry after the indicated time.', new Date(admission.retryAt).toISOString()));
+  }, express.json({ limit: '4kb', strict: false }), async (req, res) => {
     const input = parseRepositoryUrl(readRepositoryUrl(req.body));
     const disconnected = watchRequestDisconnect(req, res);
     try {
@@ -90,6 +105,12 @@ export function repositoryRoute(github: GitHubClient, options: RepositoryRouteOp
       error: { code: safe.code, message: safe.message, ...(safe.retryAt ? { retryAt: safe.retryAt } : {}) },
       requestId: randomUUID(),
     };
+    if (safe.retryAt) {
+      const retryAtMs = Date.parse(safe.retryAt);
+      if (Number.isFinite(retryAtMs)) {
+        res.set('Retry-After', String(Math.max(0, Math.ceil((retryAtMs - now()) / 1000))));
+      }
+    }
     res.status(safe.status).json(result);
   };
   router.use(errors);
