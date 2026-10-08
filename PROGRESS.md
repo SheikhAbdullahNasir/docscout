@@ -25,6 +25,7 @@ Approved source: `PROJECT_SPEC.md` version 1.0. Updated October 8, 2026.
   - [x] Phase 4 completion gate and CI.
 - [ ] Phase 5 — optional AI; not requested, disabled.
 - [ ] Phase 6 — release readiness and real-repository validation.
+  - [x] Phase 6A — fresh-start documentation and command/configuration accuracy (October 8, 2026).
 
 ## Phase 0 decisions and completed work
 
@@ -316,7 +317,7 @@ Offline fixtures cover unassigned and assigned good-first issues, help-wanted-on
 
 The first combined sandboxed Vitest runs encountered the known transient Windows temporary-file `ENOENT`, and sandboxed Supertest hit loopback `EACCES`; unchanged reruns outside those sandbox restrictions passed. Playwright emitted the existing harmless `NO_COLOR`/`FORCE_COLOR` warnings. No required verification check was skipped or remains blocked. Phase 2C implementation commit: `3dca3a0` (`feat: add Phase 2C labeled issue analysis`). No push or pull request was requested or attempted.
 
-## Remaining work
+## Phase 3 checkpoint status (October 5, 2026)
 
 Phase 3A now presents the existing typed findings in separate documentation and labeled-issue sections, with documentation first. Cards show title, confidence, unknown difficulty, server-provided source/evidence, why the finding matters, manual verification steps, and limitations; labeled-issue cards retain maintainer labels and assignment state. Empty finding sections describe only what the available checked evidence produced. Repository excerpts remain plain text and links remain limited to server-provided source URLs.
 
@@ -347,7 +348,7 @@ Keyboard-only verification now Tabs through the repository input, Analyze button
 
 Known limitations: automated browser verification uses Chromium only; it is not a multi-browser or assistive-technology audit. Playwright and production smoke required the permitted localhost execution mode, and Vitest required normal Windows temporary-file access after the restricted sandbox produced the known `ENOENT` failures. Unchanged reruns passed. Playwright emitted the existing harmless `NO_COLOR`/`FORCE_COLOR` warnings. No required verification was skipped or remains blocked.
 
-Stop after this verified Phase 3 completion gate. The recommended next step is a separately scoped Phase 4 reliability task. Phase 4 work and AI remain unimplemented.
+At this October 5 checkpoint, Phase 4 reliability work and optional AI remained unimplemented. Subsequent Phase 4 implementation and completion evidence is recorded below.
 
 ## Phase 2 completion gate (October 5, 2026)
 
@@ -439,3 +440,26 @@ The reviewer noted a non-blocking coverage improvement: add isolated negative re
 Known limitations: queues, request/deadline budgets, cache, deduplication, pending-scan admission, and IP rate limiting are per process instance and are not distributed across replicas. Redirect handling is bounded to the validated `/repos/{owner}/{repo}` endpoint form; ID-form redirect compatibility and live GitHub rename behavior were not verified. Automated browser checks use Chromium only. No live-repository smoke or external network checking was performed; remote Actions results remain unverified. Windows sandboxed localhost/temp-file restrictions required permitted verification reruns, which passed unchanged; Playwright also printed harmless color-environment warnings.
 
 The next recommended roadmap step is **Phase 6 — release readiness and real-repository validation**, as a separately scoped task. Phase 5 remains optional and was not started. Stop at the Phase 4 gate.
+
+## Phase 6A — fresh-start documentation (October 8, 2026)
+
+- Updated `README.md` to reflect the implemented Phase 0–4 core MVP: evidence-first results, pinned repository files, bounded analyzers and labeled issues, partial coverage, human review, safety/privacy limits, optional anonymous GitHub authentication, and disabled/unimplemented AI.
+- Replaced stale Phase 0/1 implementation claims and obsolete endpoint descriptions with current beginner setup, development, verification, and local production build/start instructions. Kept commands aligned with the npm workspace scripts, Node engine range, lockfile, Vite proxy, server startup, and `.env.example`.
+- Relabeled the older Phase 3 “Remaining work” passage as a dated checkpoint because its statement that Phase 4 was unimplemented is superseded by the later Phase 4 completion gate; preserved the historical Phase 3 evidence.
+- Documented that `docs/VALIDATION.md` and `docs/DEPLOYMENT.md` are planned for later Phase 6 work and do not exist yet. Phase 6 as a whole remains incomplete; no Phase 6B work was started.
+- Noted an out-of-scope implementation inconsistency: the current app UI still labels the result view “Phase 1” although Phases 0–4 are complete. No application code was changed in this documentation slice.
+
+### Phase 6A verification
+
+| Check | Actual result |
+|---|---|
+| Inspect root `package.json` (`npm pkg get name version private workspaces engines scripts`) | Confirmed npm workspaces, Node engine `^22.12.0 || ^24.0.0`, and documented root script names. |
+| `npm run` | Passed; listed `dev`, `lint`, `typecheck`, `test`, `test:e2e`, `test:production`, `build`, and `start`. |
+| Inspect workspace scripts and startup configuration | Confirmed development server at `127.0.0.1:3001`, Vite at `127.0.0.1:5173` with `/api` proxy, and production frontend/API startup. |
+| Inspect `.env.example`, `.gitignore`, and token wiring | Confirmed blank optional `GITHUB_TOKEN`, server-side use, ignored `.env`, `AI_PROVIDER=none`, and no active AI provider implementation. |
+| `npm exec -- playwright install --help` | Passed; confirmed the documented Chromium install command syntax. No browser was downloaded. |
+| `git remote get-url origin` | Confirmed the clone URL used in README matches the configured origin. |
+| Check release guide paths | Confirmed `docs/VALIDATION.md` and `docs/DEPLOYMENT.md` do not exist yet. |
+| `git diff --check` | Passed for the documentation changes. Git emitted its normal LF-to-CRLF working-copy notice for `README.md` and `PROGRESS.md`. |
+
+No install, development server, build, lint, typecheck, test, production smoke, E2E browser run, or live GitHub request was run for Phase 6A. These checks were outside the requested documentation-only gate; existing Phase 4 verification evidence remains recorded above.
