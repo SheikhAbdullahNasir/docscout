@@ -30,6 +30,8 @@ Approved source: `PROJECT_SPEC.md` version 1.0. Updated October 8, 2026.
   - [x] Phase 6C — real-repository validation complete October 8, 2026 (six unique public repositories across Phase 6C.1 and Phase 6C.2).
     - [x] Phase 6C.1 — controlled validation and three unique live repositories; complete October 8, 2026 (3 unique public repositories, 5 total attempts).
     - [x] Phase 6C.2 — retained-response validation of three additional unique public repositories; complete October 8, 2026 (exactly 3 scans, one per repository).
+  - [x] Phase 6D — final release-documentation audit (October 8, 2026).
+  - [ ] Phase 6E — final verification; only remaining Phase 6 gate.
 
 ## Phase 0 decisions and completed work
 
@@ -518,4 +520,13 @@ No live GitHub scan, public deployment, external hosting setup, or purchase was 
 - No cloning, repository-code/command execution, dependency installation, arbitrary documentation-link fetching, AI use, or GitHub writes occurred. No application/analyzer code changed. No commit or push was made.
 - Targeted verification for this documentation slice: `git status`, `git diff --check`, and a trailing-whitespace check on `docs/VALIDATION.md`. Full tests, full E2E, production smoke, and final release build verification remain deferred to the final Phase 6 gate.
 
-Phase 6C real-repository validation is complete. Phase 6 remains incomplete pending release documentation and final verification.
+## Phase 6D — final release-documentation audit (October 8, 2026; complete)
+
+- Audited `README.md`, `docs/DEPLOYMENT.md`, `docs/VALIDATION.md`, `PROGRESS.md`, `.env.example`, `package.json`, and runtime/limit sources `apps/server/src/index.ts`, `apps/server/src/app.ts`, `apps/server/src/routes/repository.ts`, `apps/server/src/routes/browserBudget.ts`, `apps/server/src/routes/analyzeRateLimiter.ts`, `apps/server/src/routes/scanCache.ts`, `apps/server/src/github/scanBudget.ts`, `apps/server/src/github/requestQueue.ts`, `apps/server/src/github/documents.ts`, and `apps/server/src/security/trustedProxy.ts`.
+- Corrected README release status and links, clarified the bounded snapshot/document scope, root-only npm-script check, external-link and heading-anchor limits, generated/site-route observations, partial coverage, finding and response caps, human verification, and the six-repository validation outcome. The README now states that the 50 returned documentation findings all came from Vitest and were intentional/generated/project-route behavior; the 14 cap-omitted findings were not inspected.
+- Corrected deployment wording to distinguish the current server settings (`PORT`, `TRUSTED_PROXY`, and `GITHUB_TOKEN`) from the unused AI placeholders, and stated that no public deployment has been performed. The existing deployment limits and topology matched the implementation and needed no changes.
+- Updated only the current Phase 6 status wording in `docs/VALIDATION.md`; preserved the detailed run history, capture limitations, request-count correction, and validation totals. Phase 6C remains complete.
+- Documentation-focused checks: documented npm commands were matched to root `package.json` scripts and the committed lockfile; `.env.example` was compared with current runtime reads (`PORT`, `TRUSTED_PROXY`, `GITHUB_TOKEN`), with AI entries confirmed unused and `AI_PROVIDER=none`; all six local Markdown documentation links checked in the README resolve.
+- `git diff --check` and trailing-whitespace checks on the changed documentation passed. No test suite, build, E2E, production smoke, live scan, new repository validation, or public deployment was run for Phase 6D. No application/analyzer code changed, and no commit or push was made.
+
+**Phase 6C remains complete. Phase 6D is complete. Phase 6 overall remains incomplete, with only Phase 6E final verification remaining.**

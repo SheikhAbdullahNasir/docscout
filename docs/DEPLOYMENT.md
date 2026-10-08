@@ -1,6 +1,6 @@
 # DocScout production deployment guide
 
-This guide describes the production path implemented in this repository. It prepares an owner to run DocScout; publishing or deploying it is a separate, explicit owner action and is not part of Phase 6B.
+This guide describes the production path implemented in this repository. It prepares an owner to run DocScout; no public deployment has been performed as part of this project. Publishing remains an owner action.
 
 ## Requirements and commands
 
@@ -16,16 +16,16 @@ npm start
 
 ## Runtime configuration and secrets
 
-The server reads environment variables and an optional root `.env` file. `.env.example` lists the supported settings. Keep real secrets in the server environment or the untracked root `.env` file:
+The server reads the current runtime settings from the environment and an optional root `.env` file. Of the entries in `.env.example`, the current server consumes `PORT`, `TRUSTED_PROXY`, and `GITHUB_TOKEN`. Keep real secrets in the server environment or the untracked root `.env` file:
 
 | Setting | Behavior |
 |---|---|
 | `PORT` | Integer from 1 through 65535; defaults to `3001`. |
 | `TRUSTED_PROXY` | Optional comma-separated explicit IP addresses or CIDRs for the reverse proxy; see below. |
 | `GITHUB_TOKEN` | Optional server-side token for public GitHub API reads. Anonymous use needs no token; a token improves the upstream allowance but does not make it unlimited or allow private repositories. |
-| `AI_PROVIDER` | Keep `none`. AI is not implemented, makes no requests, and has no runtime key requirement. |
+| `AI_PROVIDER` | `.env.example` sets this placeholder to `none`. The current server does not read AI settings; AI is not implemented, makes no requests, and has no runtime key requirement. |
 
-Never put a secret in a `VITE_` variable. Vite variables with that prefix are exposed to browser code in the built frontend. `GITHUB_TOKEN` is read by the Node server and is never sent to the browser. The OpenAI and Gemini entries in `.env.example` are placeholders for a future phase and do not enable AI.
+Never put a secret in a `VITE_` variable. Vite variables with that prefix are exposed to browser code in the built frontend. `GITHUB_TOKEN` is read by the Node server and is never sent to the browser. The other AI entries in `.env.example` (`AI_MODEL`, `OPENAI_API_KEY`, `GEMINI_API_KEY`, and `AI_DAILY_BUDGET_USD`) are future placeholders; the current server does not consume them, and they do not enable AI.
 
 ## Production serving and network layout
 

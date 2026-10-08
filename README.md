@@ -9,14 +9,14 @@ The guiding rule is **evidence first**: a suggestion is limited to what DocScout
 The core MVP (Phases 0–4) is implemented. For one public `github.com` repository, DocScout:
 
 - resolves the default branch to a commit and uses that pinned snapshot for repository files;
-- reads a supported root README, repository-local contribution guidance when found, the root `package.json`, and up to 12 Markdown files under `docs/`;
-- checks selected Markdown for missing repository-relative file targets and README commands that may refer to missing root npm scripts;
+- reads one supported root README, one selected repository-local `CONTRIBUTING.md` when found, the root `package.json`, and up to 12 additional Markdown files under `docs/`;
+- checks selected Markdown for missing repository-relative file targets, and conservatively checks supported README npm commands against scripts in the root `package.json`;
 - retrieves open issues carrying `good first issue` or `help wanted` labels and presents them as possible opportunities;
-- shows source evidence, confidence, next steps, and coverage, including partial results when limits or unavailable evidence prevent a complete check.
+- shows source evidence, confidence, next steps, and coverage, including partial results when limits or unavailable evidence prevent a complete check. Every finding is a suggestion that needs human verification, not a confirmed defect.
 
 Issue data is fetched from GitHub when a scan runs, so it can change independently of the pinned file snapshot. Labels do not prove that an issue is easy, still available, or a good fit; verify it on GitHub before acting.
 
-Phase 5 AI is optional and has not been implemented. It is disabled and not required for the core MVP. Phase 6 release work is in progress: this README records the Phase 6A fresh-start documentation, and Phase 6B adds the deployment guide. Real-repository validation remains planned.
+Phase 5 AI remains optional, intentionally disabled, and unimplemented; the core MVP does not depend on it. Phase 6C real-repository validation and the Phase 6D release-documentation audit are complete. Phase 6E final verification is the remaining Phase 6 gate.
 
 ## Prerequisites
 
@@ -32,7 +32,7 @@ cd docscout
 npm ci
 ```
 
-The repository uses npm workspaces and commits `package-lock.json`; `npm ci` installs the locked dependencies. No GitHub token, AI key, account, or database is needed for anonymous local use.
+The repository uses npm workspaces and commits `package-lock.json`; `npm ci` installs the locked dependencies. No GitHub token, AI key, login, or database is needed for anonymous local use.
 
 ## Run in development
 
@@ -53,16 +53,16 @@ To use one, copy `.env.example` to a root `.env` file and set `GITHUB_TOKEN` the
 ## What DocScout does not check
 
 - Only public repositories on `github.com` and the default branch are in scope. Private repositories, other Git hosting services, other branches, and full history are not supported.
-- Local-link analysis checks repository-relative file targets. External URLs and heading anchors are not verified; unsupported links are shown as unchecked or unsupported.
-- npm-script analysis is conservative and compares supported README command forms with scripts in the root `package.json`. It does not execute commands or resolve scripts in nested packages or workspaces.
-- Issue retrieval is limited to two pages per supported label, and results are capped at 20 issue opportunities. Documentation findings are also capped. A truncated GitHub tree, request limit, timeout, or omitted file can make coverage partial.
-- Suggestions require human review. DocScout does not estimate issue difficulty, create issues or pull requests, or write to analyzed repositories.
+- Local-link analysis checks repository-relative file targets. External URLs and heading anchors are not checked. Generated documentation or site-router paths may produce a missing-path suggestion even when intentional; check the project's site configuration before proposing a change.
+- npm-script analysis recognizes only conservative README command forms and compares them with scripts in the root `package.json`. It does not execute commands or resolve scripts in nested packages or workspaces.
+- The docs selector reads at most 12 additional Markdown files under `docs/`. Issue retrieval is limited to two pages per supported label; findings are capped at 50 documentation suggestions and 20 labeled issues. The browser response is capped at 3 MiB; omitted evidence can make coverage partial.
+- Incomplete or skipped checks remain visible as partial or unknown. An empty scan means no suggestions were found in the checked scope, not that the repository has no problems. DocScout does not estimate issue difficulty, create issues or pull requests, or write to analyzed repositories.
 
 ## Security and privacy
 
 Treat repository documents and issue text as untrusted input. DocScout sends bounded read requests to GitHub's API; it does not fetch arbitrary URLs found in repository content. It never clones a repository, installs its dependencies, builds it, or runs its code. Repository content is displayed safely, and remote images are not loaded automatically.
 
-DocScout only accepts public repositories and performs no GitHub writes. The optional GitHub token stays on the server. AI provider settings in `.env.example` are placeholders: AI is not implemented, no AI requests are made, and setting provider keys does not enable it.
+DocScout only accepts public repositories and performs no GitHub writes. The optional GitHub token stays on the server. AI settings in `.env.example` are placeholders: AI is not implemented, no AI requests are made, and setting provider keys does not enable it.
 
 The MVP has no database, persistent scan history, or analytics tracking. Scan coordination, rate limits, and result caching are held in server memory; cache entries expire and restart clears that state. Limits are per server process, so a multi-instance deployment would need shared coordination.
 
@@ -92,13 +92,17 @@ npm run build
 npm start
 ```
 
-Open <http://127.0.0.1:3001>. The server serves the built frontend and API from the same origin; `PORT` can select another port. The current server binds to loopback, so this is a local production-mode check, not a public deployment. See [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) for deployment constraints and production smoke steps.
+Open <http://127.0.0.1:3001>. The server serves the built frontend and API from the same origin; `PORT` can select another port. The current server binds to loopback, so this is a local production-mode check, not a public deployment. No public deployment has been performed as part of this project. See [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) for deployment constraints and production smoke steps.
 
 ## Project and release documentation
 
 - [`PROJECT_SPEC.md`](PROJECT_SPEC.md) is the product and safety source of truth.
 - [`PROGRESS.md`](PROGRESS.md) records phase status, decisions, and verification evidence.
-- `docs/VALIDATION.md` is the planned real-repository validation report; it has not been created yet.
+- [`docs/VALIDATION.md`](docs/VALIDATION.md) records the real-repository validation evidence and its limitations.
 - [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) documents the production startup path, deployment constraints, security boundaries, and smoke procedure.
+
+## Release validation sample
+
+The Phase 6C review covered six public repositories across JavaScript/TypeScript, Rust, Go, and Python. All 50 documentation findings returned in the sample came from Vitest and were classified as intentional, generated, or project-route behavior explained by its VitePress setup; 14 additional findings omitted by the cap were not inspected. None was classified as supported/useful; this small manual review is not a benchmark. See [`docs/VALIDATION.md`](docs/VALIDATION.md) for the full evidence.
 
 The core MVP is implemented through Phase 4. Phase 5 remains optional and disabled. Do not treat a successful local build as a public release or deployment.

@@ -1,7 +1,7 @@
 # DocScout release validation report
 
 - **Validation slice:** Phase 6C.1 and Phase 6C.2, October 8, 2026
-- **Status:** Phase 6C real-repository validation is complete for six unique public repositories. Phase 6C.1's retained Vitest response had all 50 emitted documentation findings reviewed; Phase 6C.2 added exactly three new one-pass scans and emitted no documentation findings. Fourteen findings were omitted by DocScout's existing result cap and were not inspected. No unresolved analyzer defect was found. Phase 6 overall remains incomplete pending its release documentation and final verification gate.
+- **Status:** Phase 6C real-repository validation is complete for six unique public repositories. Phase 6C.1's retained Vitest response had all 50 emitted documentation findings reviewed; Phase 6C.2 added exactly three new one-pass scans and emitted no documentation findings. Fourteen findings were omitted by DocScout's existing result cap and were not inspected. No unresolved analyzer defect was found. Phase 6D release-documentation audit is complete; Phase 6 overall remains incomplete pending Phase 6E final verification.
 
 This is a small manual reality check, not a benchmark. DocScout does not promise that every repository contains useful findings. The goal is to inspect whether emitted findings are supported by the repository evidence DocScout checked. No issues or pull requests were opened during validation. AI remained disabled and was not involved.
 
@@ -268,4 +268,4 @@ The 50 reviewed findings were all from the retained Vitest result and mapped to 
 
 No analyzer correction remains required from this six-repository sample, and no genuine false-positive pattern or unresolved analyzer defect was found. Notable limits observed in real use are the existing 50-document-finding cap, bounded `docs/` selection (`docs-limit` appeared for Vitest, Click, and MkDocs Material), unsupported/unchecked links that are not verified, and root-only npm-script analysis being skipped when Python or Go projects have no root `package.json`. Empty finding sets describe only the checked scope; they do not establish that a repository has no problems. No success rate or accuracy percentage is inferred.
 
-**Phase 6C is complete. Phase 6 remains incomplete** until its release documentation and final verification gate are completed. Full test suite, full E2E, production smoke, and final release build checks were deferred as requested; no application or analyzer code changed, and no commit or push was made.
+**Phase 6C is complete. Phase 6D release-documentation audit is complete. Phase 6 remains incomplete** pending Phase 6E final verification. The full test suite, full E2E, production smoke, and final release build checks were deferred as requested and remain for that gate; no application or analyzer code changed, and no commit or push was made.
