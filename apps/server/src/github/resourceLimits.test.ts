@@ -52,7 +52,7 @@ describe('shared scan request budget', () => {
       expect(result.issues.coverage.complete).toBe(true);
       expect(budget.requestsUsed).toBe(7);
       expect(budget.remainingRequests).toBe(23);
-      expect(result.scan).toBeUndefined();
+      expect(result.scan).toEqual({ status: 'complete', githubRequests: 7, warnings: [] });
     } finally { budget.dispose(); }
   });
 

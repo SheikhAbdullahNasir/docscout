@@ -150,15 +150,16 @@ function isAggregationCoverage(value: unknown): boolean {
 export function isSnapshotResponse(value: unknown): value is RepositorySnapshotResponse {
   if (!isRecord(value) || value.schemaVersion !== 1 || (value.status !== 'ready' && value.status !== 'empty')) return false;
   const scan = value.scan;
-  if (scan !== undefined) {
-    if (!isRecord(scan) || scan.status !== 'partial' || !isCount(scan.githubRequests)
-      || !Array.isArray(scan.warnings) || !scan.warnings.every((warning) => isRecord(warning)
-        && typeof warning.code === 'string' && typeof warning.message === 'string')) return false;
-    const omissions = scan.responseOmissions;
-    if (omissions !== undefined && (!isRecord(omissions)
-      || !['previews', 'excerpts', 'treeEntries', 'issueRecords', 'documents', 'skippedDocuments', 'findings']
-        .every((key) => isCount(omissions[key])))) return false;
-  }
+  if (!isRecord(scan) || (scan.status !== 'complete' && scan.status !== 'partial')
+    || !isCount(scan.githubRequests) || !Array.isArray(scan.warnings)
+    || !scan.warnings.every((warning) => isRecord(warning)
+      && typeof warning.code === 'string' && typeof warning.message === 'string')) return false;
+  if ((scan.status === 'complete' && scan.warnings.length > 0)
+    || (scan.status === 'partial' && scan.warnings.length === 0)) return false;
+  const omissions = scan.responseOmissions;
+  if (omissions !== undefined && (!isRecord(omissions)
+    || !['previews', 'excerpts', 'treeEntries', 'issueRecords', 'documents', 'skippedDocuments', 'findings']
+      .every((key) => isCount(omissions[key])))) return false;
   const repository = value.repository;
   const issues = value.issues;
   if (!isRecord(repository) || typeof repository.owner !== 'string' || typeof repository.name !== 'string'
@@ -407,7 +408,8 @@ function Coverage({ result }: { result: RepositorySnapshotResponse }) {
           ? 'Issue coverage: complete for both supported label queries.'
           : 'Issue coverage was partial; only returned issue evidence is shown.'}</p>
         <ul>
-          {result.scan?.warnings.map((warning) => <li key={warning.code}>{warning.message}</li>)}
+          <li>GitHub requests used: {result.scan.githubRequests}.</li>
+          {result.scan.warnings.map((warning) => <li key={warning.code}>{warning.message}</li>)}
           {result.issues.coverage.queries.map((query) => <li key={query.label}>{issueQuerySummary(query)}</li>)}
           {labeledIssueCoverage.findingsOmitted > 0 && (
             <li>Issue opportunities omitted by result limits: {labeledIssueCoverage.findingsOmitted}.</li>
@@ -423,7 +425,7 @@ function Coverage({ result }: { result: RepositorySnapshotResponse }) {
   const unavailableDocuments = documentStates.filter((state) => state.status !== 'available').length;
   const issueCoverageComplete = result.issues.coverage.complete && !result.issues.coverage.sampled;
   const complete = tree.complete && documents.selectionComplete && documents.skipped.length === 0
-    && !result.scan
+    && result.scan.status === 'complete'
     && documents.omissions.length === 0
     && analysis.markdownLinks.coverage.documentsUnchecked === 0
     && analysis.markdownLinks.coverage.uncheckedLinks === 0
@@ -440,7 +442,8 @@ function Coverage({ result }: { result: RepositorySnapshotResponse }) {
           : 'Partial coverage — useful checked evidence is shown below.'}
       </p>
       <ul>
-        {result.scan?.warnings.map((warning) => <li key={warning.code}>{warning.message}</li>)}
+        <li>GitHub requests used: {result.scan.githubRequests}.</li>
+        {result.scan.warnings.map((warning) => <li key={warning.code}>{warning.message}</li>)}
         <li>{tree.complete
           ? 'Repository tree: complete.'
           : `Repository tree: incomplete${tree.truncated ? ' because GitHub returned a truncated tree' : ''}.`}</li>
@@ -486,7 +489,7 @@ export function Results({ result }: { result: RepositorySnapshotResponse }) {
   const findings = result.status === 'ready' ? result.snapshot.analysis.findings : result.analysis.findings;
   return (
     <div className="results">
-      <p role="status" className="visually-hidden">{result.scan ? 'Repository analysis returned partial coverage.' : 'Repository analysis complete.'}</p>
+      <p role="status" className="visually-hidden">{result.scan.status === 'partial' ? 'Repository analysis returned partial coverage.' : 'Repository analysis complete.'}</p>
       <section className="repository-summary" aria-labelledby="repository-heading">
         <p className="eyebrow">REPOSITORY SNAPSHOT</p>
         <h2 id="repository-heading">{result.repository.owner}/{result.repository.name}</h2>

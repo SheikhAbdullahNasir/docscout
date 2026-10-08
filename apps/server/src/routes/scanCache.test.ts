@@ -22,7 +22,7 @@ type Result = {
   status: 'ready' | 'empty' | 'error';
   cached: boolean;
   evidence?: { text: string };
-  scan?: { status: 'partial'; githubRequests: number };
+  scan?: { status: 'complete' | 'partial'; githubRequests: number };
 };
 
 describe('completed scan cache', () => {
@@ -93,11 +93,13 @@ describe('in-flight scan coordinator', () => {
     const start = vi.fn(() => ({ promise: task.promise, cancel: vi.fn() }));
     const first = coordinator.run('owner/repo', new AbortController().signal, start);
     const second = coordinator.run('owner/repo', new AbortController().signal, start);
-    task.resolve({ status: 'ready', cached: false, evidence: { text: 'same' } });
+    task.resolve({ status: 'ready', cached: false, scan: { status: 'complete', githubRequests: 6 }, evidence: { text: 'same' } });
 
     const [left, right] = await Promise.all([first, second]);
     expect(start).toHaveBeenCalledTimes(1);
     expect(left.result).toEqual(right.result);
+    expect(left.result.scan).toEqual({ status: 'complete', githubRequests: 6 });
+    expect(right.result.scan).toEqual({ status: 'complete', githubRequests: 6 });
     expect(left.result).not.toBe(right.result);
     expect(left.cached || right.cached).toBe(false);
   });

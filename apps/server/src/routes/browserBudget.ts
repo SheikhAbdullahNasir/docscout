@@ -20,13 +20,13 @@ function preview(text: string, maximum: number): string {
   return text.slice(0, maximum).replace(/[\uD800-\uDBFF]$/u, '');
 }
 
-export function boundBrowserResponse(original: RepositorySnapshotResponse, githubRequests = 0): RepositorySnapshotResponse {
+export function boundBrowserResponse(original: RepositorySnapshotResponse): RepositorySnapshotResponse {
   if (jsonBytes(original) <= MAX_BROWSER_BYTES) return original;
   const result = structuredClone(original);
   const omissions = { previews: 0, excerpts: 0, treeEntries: 0, issueRecords: 0, documents: 0, skippedDocuments: 0, findings: 0 };
   result.scan = {
-    status: 'partial', githubRequests: result.scan?.githubRequests ?? githubRequests,
-    warnings: [...result.scan?.warnings ?? [], { code: 'BROWSER_RESPONSE_LIMIT',
+    status: 'partial', githubRequests: result.scan.githubRequests,
+    warnings: [...result.scan.warnings, { code: 'BROWSER_RESPONSE_LIMIT',
       message: 'Some previews or result details were shortened or omitted to keep the browser response within 3 MiB. Retained findings keep their source references; omitted details are not evidence of absence.' }],
     responseOmissions: omissions,
   };

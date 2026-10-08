@@ -74,7 +74,7 @@ export function repositoryRoute(github: GitHubClient, options: RepositoryRouteOp
             const repository = await github.getRepository(input, budget);
             const snapshot = await github.getSnapshot(repository, budget);
             const response: RepositorySnapshotResponse = { schemaVersion: 1, repository, ...snapshot, scannedAt, cached: false };
-            return boundBrowserResponse(response, budget.requestsUsed);
+            return boundBrowserResponse(response);
           } finally { budget.dispose(); }
         })();
         return {

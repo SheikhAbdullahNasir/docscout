@@ -242,7 +242,7 @@ export type ScanResourceWarningCode = 'GITHUB_REQUEST_BUDGET_EXHAUSTED' | 'SCAN_
 export type ScanWarningCode = ScanResourceWarningCode | 'BROWSER_RESPONSE_LIMIT';
 export type ScanWarning = { code: ScanWarningCode; message: string };
 export type RepositoryScanCoverage = {
-  status: 'partial';
+  status: 'complete' | 'partial';
   githubRequests: number;
   warnings: ScanWarning[];
   responseOmissions?: {
@@ -251,7 +251,7 @@ export type RepositoryScanCoverage = {
   };
 };
 
-export type RepositorySnapshotResult = (
+export type RepositorySnapshotData =
   | { status: 'ready'; snapshot: {
     defaultBranch: string;
     commitSha: string;
@@ -266,8 +266,9 @@ export type RepositorySnapshotResult = (
       labeledIssues: RepositoryLabeledIssueAnalysis;
     };
   }; issues: RepositoryIssues }
-  | { status: 'empty'; snapshot: null; message: string; issues: RepositoryIssues; analysis: EmptyRepositoryAnalysis }
-) & { scan?: RepositoryScanCoverage };
+  | { status: 'empty'; snapshot: null; message: string; issues: RepositoryIssues; analysis: EmptyRepositoryAnalysis };
+
+export type RepositorySnapshotResult = RepositorySnapshotData & { scan: RepositoryScanCoverage };
 
 export type RepositorySnapshotResponse = RepositorySnapshotResult & {
   schemaVersion: 1;

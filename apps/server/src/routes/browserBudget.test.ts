@@ -29,6 +29,7 @@ describe('browser analysis response budget', () => {
   it('keeps a normal result unchanged', async () => {
     const result = await resultWithReadme();
     const json = JSON.stringify(result);
+    expect(result.scan).toEqual({ status: 'complete', githubRequests: 5, warnings: [] });
     expect(boundBrowserResponse(result)).toBe(result);
     expect(JSON.stringify(result)).toBe(json);
   });
@@ -39,7 +40,7 @@ describe('browser analysis response budget', () => {
     const originalFinding = result.snapshot.analysis.findings[0];
     result.snapshot.documents.readme.document.text = '\t😀'.repeat(400_000);
     originalFinding.evidence.excerpt = '\t😀'.repeat(400_000);
-    const bounded = boundBrowserResponse(result, 5);
+    const bounded = boundBrowserResponse(result);
     assertFits(bounded);
     expect(bounded).toMatchObject({ scan: { status: 'partial', githubRequests: 5, warnings: [
       { code: 'BROWSER_RESPONSE_LIMIT', message: expect.any(String) },
@@ -61,7 +62,7 @@ describe('browser analysis response budget', () => {
     const bounded = boundBrowserResponse(result);
     assertFits(bounded);
     expect(bounded).toMatchObject({ status: 'ready', snapshot: { commitSha, treeSha, tree: { complete: false },
-      analysis: { findings } }, scan: { status: 'partial', responseOmissions: { treeEntries: 3200 } } });
+      analysis: { findings } }, scan: { status: 'partial', githubRequests: 5, responseOmissions: { treeEntries: 3200 } } });
   });
 
   it('discloses omitted whole records instead of truncating required finding or document identifiers', async () => {
@@ -73,6 +74,6 @@ describe('browser analysis response budget', () => {
     assertFits(bounded);
     expect(bounded).toMatchObject({ snapshot: { documents: { readme: { status: 'unknown' }, omissions: ['BROWSER_RESPONSE_LIMIT'] },
       analysis: { findings: [], coverage: { documentationFindingsProduced: 0, documentationFindingsOmitted: 1 } } },
-    scan: { status: 'partial', responseOmissions: { documents: 1, findings: 1 } } });
+      scan: { status: 'partial', githubRequests: 5, responseOmissions: { documents: 1, findings: 1 } } });
   });
 });

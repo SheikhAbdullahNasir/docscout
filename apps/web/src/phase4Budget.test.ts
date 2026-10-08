@@ -21,9 +21,12 @@ async function fixture(): Promise<RepositorySnapshotResponse> {
 describe('Phase 4A browser contract and partial coverage', () => {
   it('continues accepting normal Phase 1–3 results', async () => {
     const result = await fixture();
+    expect(result.scan).toEqual({ status: 'complete', githubRequests: 4, warnings: [] });
     expect(isSnapshotResponse(result)).toBe(true);
     expect(isSnapshotResponse({ ...result, cached: true })).toBe(true);
-    expect(renderToStaticMarkup(createElement(Results, { result }))).toContain('No suggestions found in the checked scope.');
+    const html = renderToStaticMarkup(createElement(Results, { result }));
+    expect(html).toContain('No suggestions found in the checked scope.');
+    expect(html).toContain('GitHub requests used: 4.');
   });
 
   it('accepts deadline-skipped analysis and displays its partial warning and announcement', async () => {
@@ -43,7 +46,7 @@ describe('Phase 4A browser contract and partial coverage', () => {
     const result = await fixture();
     if (result.status !== 'ready') throw new Error('fixture');
     result.snapshot.tree.entries = [{ path: 'x'.repeat(3 * 1024 * 1024), type: 'blob', mode: '100644', sha: 'c'.repeat(40) }];
-    const bounded = boundBrowserResponse(result, 5);
+    const bounded = boundBrowserResponse(result);
     expect(isSnapshotResponse(bounded)).toBe(true);
     const html = renderToStaticMarkup(createElement(Results, { result: bounded }));
     expect(html).toContain('browser response within 3 MiB');
@@ -53,6 +56,9 @@ describe('Phase 4A browser contract and partial coverage', () => {
 
   it('rejects malformed resource coverage rather than accepting it as a normal result', async () => {
     const result = await fixture();
+    expect(isSnapshotResponse({ ...result, scan: undefined })).toBe(false);
+    expect(isSnapshotResponse({ ...result, scan: { status: 'complete', githubRequests: 5,
+      warnings: [{ code: 'SCAN_DEADLINE_EXCEEDED', message: 'Partial' }] } })).toBe(false);
     expect(isSnapshotResponse({ ...result, scan: { status: 'partial', githubRequests: -1, warnings: [] } })).toBe(false);
     expect(isSnapshotResponse({ ...result, scan: { status: 'partial', githubRequests: 5, warnings: [{ code: 'x', message: {} }] } })).toBe(false);
     expect(isSnapshotResponse({ ...result, scan: { status: 'partial', githubRequests: 5, warnings: [], responseOmissions: { findings: 'all' } } })).toBe(false);

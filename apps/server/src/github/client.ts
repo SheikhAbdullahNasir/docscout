@@ -1,4 +1,4 @@
-import type { PublicRepositoryMetadata, RepositoryDocuments, RepositorySnapshotResult } from '@docscout/shared';
+import type { PublicRepositoryMetadata, RepositoryDocuments, RepositoryScanCoverage, RepositorySnapshotData, RepositorySnapshotResult } from '@docscout/shared';
 import { ApplicationError } from '../errors.js';
 import { analyzeRepositoryMarkdownTargets } from '../analyzers/localLinks.js';
 import { analyzeReadmeNpmScripts } from '../analyzers/npmScripts.js';
@@ -207,13 +207,17 @@ export class GitHubClient {
       const result = await this.snapshot(metadata, budget);
       // Finalize useful completed evidence even if the deadline was reached during local processing.
       try { budget.checkDeadline(); } catch (error) { budget.note(error); }
-      return budget.warnings.length
-        ? { ...result, scan: { status: 'partial', githubRequests: budget.requestsUsed, warnings: budget.warnings } }
-        : result;
+      const warnings = budget.warnings;
+      const scan: RepositoryScanCoverage = {
+        status: warnings.length ? 'partial' : 'complete',
+        githubRequests: budget.requestsUsed,
+        warnings,
+      };
+      return { ...result, scan };
     } finally { if (!sharedBudget) budget.dispose(); }
   }
 
-  private async snapshot(metadata: PublicRepositoryMetadata, budget: ScanBudget): Promise<RepositorySnapshotResult> {
+  private async snapshot(metadata: PublicRepositoryMetadata, budget: ScanBudget): Promise<RepositorySnapshotData> {
     // Revalidate runtime callers as well as response data. No response URL is a request target.
     if (typeof metadata.defaultBranch !== 'string' || !validBranch(metadata.defaultBranch)) {
       throw new ApplicationError(502, 'COMMIT_LOOKUP_FAILED', 'GitHub returned an unsupported default branch. Snapshot lookup is unavailable.');

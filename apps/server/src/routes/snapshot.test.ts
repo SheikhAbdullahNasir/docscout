@@ -16,6 +16,21 @@ const emptyIssueCoverage = { complete: true, sampled: false, queries: [
 ] };
 
 describe('snapshot endpoint', () => {
+  it('exposes the actual request count for an ordinary complete scan', async () => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValueOnce(Response.json(metadata))
+      .mockResolvedValueOnce(Response.json(commit)).mockResolvedValueOnce(Response.json({ sha: treeSha, truncated: false,
+        tree: [{ path: 'README.md', type: 'blob', mode: '100644', sha: 'c'.repeat(40), size: 4 }] }))
+      .mockResolvedValueOnce(Response.json({ path: 'README.md', type: 'file', encoding: 'base64', sha: 'c'.repeat(40),
+        size: 4, content: 'dGV4dA==' }))
+      .mockResolvedValueOnce(Response.json([])).mockResolvedValueOnce(Response.json([]));
+    const response = await request(createApp({ github: new GitHubClient({ fetcher }) }))
+      .post('/api/repository/snapshot').send(input);
+
+    expect(response.status).toBe(200);
+    expect(response.body.scan).toEqual({ status: 'complete', githubRequests: 6, warnings: [] });
+    expect(fetcher).toHaveBeenCalledTimes(6);
+  });
+
   it('reuses a completed scan for normalized repository URLs', async () => {
     const fetcher = vi.fn<typeof fetch>().mockResolvedValueOnce(Response.json(metadata))
       .mockResolvedValueOnce(Response.json(commit)).mockResolvedValueOnce(Response.json({ sha: treeSha, truncated: false, tree: [] }))
@@ -30,6 +45,8 @@ describe('snapshot endpoint', () => {
     expect(cached.status).toBe(200);
     expect(fresh.body.cached).toBe(false);
     expect(cached.body.cached).toBe(true);
+    expect(fresh.body.scan).toEqual({ status: 'complete', githubRequests: 5, warnings: [] });
+    expect(cached.body.scan).toEqual(fresh.body.scan);
     expect(cached.body.scannedAt).toBe(fresh.body.scannedAt);
     expect(cached.body.issues.fetchedAt).toBe(fresh.body.issues.fetchedAt);
     expect(fetcher).toHaveBeenCalledTimes(5);
@@ -82,7 +99,7 @@ describe('snapshot endpoint', () => {
       .mockResolvedValueOnce(Response.json([])).mockResolvedValueOnce(Response.json([]));
     const response = await request(createApp({ github: new GitHubClient({ fetcher }) })).post('/api/repository/snapshot').send(input);
     expect(response.status).toBe(200);
-    expect(response.body).toEqual({ schemaVersion: 1, repository: { owner: 'Canonical', name: 'Repo', url: metadata.html_url, private: false, archived: false, defaultBranch: 'release/docs' }, status: 'ready', scannedAt: expect.any(String), cached: false, snapshot: {
+    expect(response.body).toEqual({ schemaVersion: 1, repository: { owner: 'Canonical', name: 'Repo', url: metadata.html_url, private: false, archived: false, defaultBranch: 'release/docs' }, status: 'ready', scannedAt: expect.any(String), cached: false, scan: { status: 'complete', githubRequests: 5, warnings: [] }, snapshot: {
       defaultBranch: 'release/docs', commitSha, treeSha, tree: { entries: [], truncated, complete: !truncated },
       documents: {
         selectionComplete: !truncated,
@@ -153,6 +170,7 @@ describe('snapshot endpoint', () => {
     expect(response.status).toBe(200);
     expect(response.body).toMatchObject({
       repository: { owner: 'Canonical', defaultBranch: 'release/docs' },
+      scan: { status: 'complete', githubRequests: 4, warnings: [] },
       status: 'empty', snapshot: null, message: expect.any(String),
       analysis: { findings: [], labeledIssues: { findings: [], coverage: { eligibleIssues: 0 } } },
     });
@@ -184,7 +202,7 @@ describe('snapshot endpoint', () => {
     expect(response.status).toBe(200);
     expect(response.body.repository.owner).toBe('Canonical');
     expect(response.body.snapshot).toMatchObject({ commitSha, treeSha, tree: { entries: [], complete: false, truncated: false } });
-    expect(response.body.scan).toMatchObject({ status: 'partial', responseOmissions: { treeEntries: 3200 },
+    expect(response.body.scan).toMatchObject({ status: 'partial', githubRequests: 5, responseOmissions: { treeEntries: 3200 },
       warnings: [{ code: 'BROWSER_RESPONSE_LIMIT', message: expect.any(String) }] });
     expect(Buffer.byteLength(response.text, 'utf8')).toBeLessThanOrEqual(3 * 1024 * 1024);
   });
