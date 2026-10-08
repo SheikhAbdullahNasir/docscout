@@ -175,6 +175,7 @@ const successResponse = {
   schemaVersion: 1 as const,
   repository,
   status: 'ready' as const,
+  scan: { status: 'complete' as const, githubRequests: 8, warnings: [] },
   snapshot: {
     defaultBranch: 'release/docs',
     commitSha,
@@ -220,6 +221,7 @@ const emptyResponse = {
   schemaVersion: 1 as const,
   repository: { ...repository, archived: false },
   status: 'ready' as const,
+  scan: { status: 'complete' as const, githubRequests: 5, warnings: [] },
   snapshot: {
     defaultBranch: 'release/docs',
     commitSha,
@@ -559,6 +561,7 @@ test('distinguishes an empty filter from a repository with no suggestions', asyn
     schemaVersion: 1 as const,
     repository: { ...repository, archived: false },
     status: 'empty' as const,
+    scan: { status: 'complete' as const, githubRequests: 4, warnings: [] },
     snapshot: null,
     message: 'This repository has no commit snapshot or files to scan yet.',
     issues: { ...issues, coverage: { ...issues.coverage, complete: true, sampled: false } },
@@ -858,6 +861,7 @@ test('shows an empty repository snapshot without losing retained issue coverage'
     schemaVersion: 1 as const,
     repository: { ...repository, archived: false },
     status: 'empty' as const,
+    scan: { status: 'complete' as const, githubRequests: 4, warnings: [] },
     snapshot: null,
     message: 'This repository has no commit snapshot or files to scan yet.',
     issues: { ...issues, coverage: { ...issues.coverage, complete: true, sampled: false } },
