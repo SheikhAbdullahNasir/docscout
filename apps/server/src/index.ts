@@ -16,7 +16,8 @@ if (!Number.isInteger(port) || port < 1 || port > 65535) {
   throw new Error('PORT must be an integer from 1 to 65535.');
 }
 
-const server = createApp().listen(port, '127.0.0.1', () => {
+const host = process.env.RENDER === 'true' ? '0.0.0.0' : '127.0.0.1';
+const server = createApp().listen(port, host, () => {
   console.log(`DocScout server: http://127.0.0.1:${port}`);
 });
 for (const signal of ['SIGINT', 'SIGTERM'] as const) {

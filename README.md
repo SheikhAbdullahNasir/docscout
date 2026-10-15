@@ -92,7 +92,7 @@ npm run build
 npm start
 ```
 
-Open <http://127.0.0.1:3001>. The server serves the built frontend and API from the same origin; `PORT` can select another port. The current server binds to loopback, so this is a local production-mode check, not a public deployment. No public deployment has been performed as part of this project. See [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) for deployment constraints and production smoke steps.
+Open <http://127.0.0.1:3001>. The server serves the built frontend and API from the same origin; `PORT` can select another port. It binds to loopback by default; Render sets `RENDER=true`, which makes the server bind to all interfaces for its web-service proxy. No public deployment has been performed as part of this project. See [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) for deployment constraints and production smoke steps.
 
 ## Project and release documentation
 
