@@ -39,6 +39,8 @@ HTTPS is expected for real deployments. Terminate TLS at the HTTPS ingress/rever
 
 Express proxy trust is disabled when `TRUSTED_PROXY` is blank. When a reverse proxy is in front of DocScout, set `TRUSTED_PROXY` to the proxy's actual source IP address or CIDR values, comma-separated. For a proxy that connects from IPv4 loopback, for example, `127.0.0.1/32` may be appropriate; use the address the server actually sees.
 
+Railway-origin validation is separate from Express proxy trust. When Railway provides `RAILWAY_SERVICE_ID` and `RAILWAY_PUBLIC_DOMAIN`, browser mutation requests are accepted only when their `Origin` is `https://<RAILWAY_PUBLIC_DOMAIN>` and the request `Host` matches that domain. The server does not trust `X-Forwarded-Proto` or `X-Forwarded-Host` for this check, and it does not enable broad proxy trust.
+
 This setting must be explicit and narrow. DocScout uses Express's client IP for its per-IP scan admission limit. Trusting arbitrary forwarded headers, a wildcard, or every address would let clients spoof their IP and weaken that limit. If the proxy is not trusted, Express sees the proxy address as the client and users behind it may share one admission bucket. The server rejects invalid values and CIDRs that trust every address.
 
 ## Runtime limits and scaling

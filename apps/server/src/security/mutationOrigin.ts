@@ -18,10 +18,23 @@ function normalizedOrigin(value: string): string | undefined {
   }
 }
 
+function isRailwayPublicOrigin(req: Request, supplied: string) {
+  if (!process.env.RAILWAY_SERVICE_ID) return false;
+  const domain = process.env.RAILWAY_PUBLIC_DOMAIN;
+  const host = req.get('host');
+  if (!domain || !host) return false;
+
+  const expectedOrigin = normalizedOrigin(`https://${domain}`);
+  const requestHostOrigin = normalizedOrigin(`https://${host}`);
+  return expectedOrigin !== undefined && requestHostOrigin === expectedOrigin && supplied === expectedOrigin;
+}
+
 /** Origin is optional for non-browser clients; present values must match the request or the narrow Vite dev origin. */
 export function isAllowedMutationOrigin(req: Request, origin: string, development = process.env.NODE_ENV === 'development') {
   const supplied = normalizedOrigin(origin);
   if (!supplied) return false;
+
+  if (isRailwayPublicOrigin(req, supplied)) return true;
 
   const host = req.get('host');
   if (host) {

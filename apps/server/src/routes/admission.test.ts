@@ -110,6 +110,45 @@ describe('analysis admission and request origin', () => {
     }
   });
 
+  it('allows the Railway public HTTPS origin without trusting forwarded headers and rejects a foreign origin', async () => {
+    vi.stubEnv('NODE_ENV', 'production');
+    vi.stubEnv('RAILWAY_SERVICE_ID', 'railway-service-test');
+    vi.stubEnv('RAILWAY_PUBLIC_DOMAIN', 'docscoutserver-production.up.railway.app');
+    try {
+      const fetcher = successfulFetcher();
+      const app = createApp({ github: new GitHubClient({ fetcher }), trustedProxy: '' });
+      const host = 'docscoutserver-production.up.railway.app';
+      const health = await request(app).get('/api/health');
+      const legitimateOrigin = await request(app).post('/api/repository/snapshot')
+        .set('Host', host)
+        .set('Origin', `https://${host}`)
+        .set('X-Forwarded-Proto', 'https')
+        .send(input);
+      const maliciousOrigin = await request(app).post('/api/repository/snapshot')
+        .set('Host', host)
+        .set('Origin', 'https://attacker.example')
+        .set('X-Forwarded-Proto', 'https')
+        .send(input);
+      const mismatchedHost = await request(app).post('/api/repository/snapshot')
+        .set('Host', 'attacker.example')
+        .set('Origin', `https://${host}`)
+        .set('X-Forwarded-Proto', 'https')
+        .send(input);
+
+      expect(app.get('trust proxy')).toBe(false);
+      expect(health.status).toBe(200);
+      expect(health.body).toEqual({ status: 'ok' });
+      expect(legitimateOrigin.status).toBe(200);
+      expect(maliciousOrigin.status).toBe(403);
+      expect(maliciousOrigin.body.error.code).toBe('ORIGIN_NOT_ALLOWED');
+      expect(mismatchedHost.status).toBe(403);
+      expect(mismatchedHost.body.error.code).toBe('ORIGIN_NOT_ALLOWED');
+      expect(fetcher).toHaveBeenCalledTimes(5);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
   it('validates Origin on metadata POST requests too', async () => {
     const fetcher = vi.fn<typeof fetch>();
     const response = await request(createApp({ github: new GitHubClient({ fetcher }) }))
