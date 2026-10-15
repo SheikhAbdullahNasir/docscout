@@ -569,7 +569,7 @@ export function App() {
 
   return (
     <main>
-      <p className="eyebrow">DOCSCOUT · PHASE 1</p>
+      <p className="eyebrow">DOCSCOUT</p>
       <h1>A starting point for your next contribution.</h1>
       <p className="intro">Inspect selected repository guidance and maintainer-labeled issues from one pinned public GitHub snapshot.</p>
       <form onSubmit={submit} noValidate>
