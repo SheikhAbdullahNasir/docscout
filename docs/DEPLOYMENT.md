@@ -31,7 +31,7 @@ Never put a secret in a `VITE_` variable. Vite variables with that prefix are ex
 
 In production, the Node server serves both the built frontend and `/api` from the same origin. The browser therefore sends API requests back to the origin that served the page. A static-only hosting service cannot run DocScout by itself because it cannot run the required Node API server.
 
-The server listens on `127.0.0.1:<PORT>` by default. Render sets `RENDER=true`, so the server binds to `0.0.0.0:<PORT>` there, as required for a Render web service; Render also provides `PORT` for the service. The app does not terminate TLS. For other deployments, use HTTPS at an ingress or reverse proxy that can reach the configured listener. Keep the frontend and `/api` on the same public origin.
+The server listens on `127.0.0.1:<PORT>` by default. Render sets `RENDER=true`, and Railway provides `RAILWAY_SERVICE_ID`; either makes the server bind to `0.0.0.0:<PORT>` for the platform's web-service proxy. Both platforms provide `PORT` for the service. The app does not terminate TLS. For other deployments, use HTTPS at an ingress or reverse proxy that can reach the configured listener. Keep the frontend and `/api` on the same public origin.
 
 HTTPS is expected for real deployments. Terminate TLS at the HTTPS ingress/reverse proxy and forward requests to the Node listener. Render provides HTTPS at its edge. Local smoke checks use plain HTTP on loopback.
 
